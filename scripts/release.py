@@ -16,41 +16,39 @@ def check_working_directory():
 
 
 def get_next_version(alpha_name=None):
-    if alpha_name:
-        # Get current version from pyproject.toml
-        with open("pyproject.toml", "r") as f:
-            data = toml.load(f)
-        base_version = data["tool"]["poetry"]["version"]
+    # Get the next regular version first
+    today = datetime.now()
+    year = today.year
+    month = today.month
+    year_month = f"{year}.{month}"
 
-        # Create alpha version with timestamp (YYYYMMDDHHMM)
-        timestamp = datetime.now().strftime("%Y%m%d%H%M")
-        return f"{base_version}.alpha{timestamp}"
-    else:
-        # Original version logic for regular releases
-        today = datetime.now()
-        year = today.year
-        month = today.month
-        year_month = f"{year}.{month}"
-
-        # Match both formats by providing both patterns
-        padded_month = f"{month:02d}"
-        tags = (
-            subprocess.check_output(
-                ["git", "tag", "-l", f"v{year}.{month}.*", f"v{year}.{padded_month}.*"]
-            )
-            .decode()
-            .strip()
-            .split("\n")
+    # Match both formats by providing both patterns
+    padded_month = f"{month:02d}"
+    tags = (
+        subprocess.check_output(
+            ["git", "tag", "-l", f"v{year}.{month}.*", f"v{year}.{padded_month}.*"]
         )
+        .decode()
+        .strip()
+        .split("\n")
+    )
 
-        release_tags = [tag[1:] for tag in tags if tag and not tag.endswith(".dev")]
+    release_tags = [tag[1:] for tag in tags if tag and not tag.endswith(".dev")]
 
-        if not release_tags:
-            return f"{year_month}.1"
-
+    if not release_tags:
+        next_version = f"{year_month}.1"
+    else:
         patch_numbers = [int(tag.split(".")[-1]) for tag in release_tags]
         next_patch = max(patch_numbers) + 1
-        return f"{year_month}.{next_patch}"
+        next_version = f"{year_month}.{next_patch}"
+
+    if alpha_name:
+        # Create alpha version with timestamp (YYYYMMDDHHMM)
+        timestamp = datetime.now().strftime("%Y%m%d%H%M")
+        # Use hyphen format for alpha versions to be npm-compatible
+        return f"{next_version}-alpha.{timestamp}"
+    else:
+        return next_version
 
 
 def update_pyproject_toml(new_version):
@@ -167,25 +165,37 @@ def main():
     alpha_name = None
     if len(sys.argv) > 2 and sys.argv[1] == "--alpha":
         alpha_name = sys.argv[2]
-        skip_changelog = True
-    else:
-        skip_changelog = False
 
     new_version = get_next_version(alpha_name)
     files_to_add = []
 
     # Print version prominently for easy copying
+    print("\n" + "=" * 50)
+    print(f"Version: {new_version}")
+    print("=" * 50 + "\n")
+
     if alpha_name:
-        print("\n" + "=" * 50)
-        print(f"Alpha version: {new_version}")
-        print("=" * 50 + "\n")
-        # Skip pyproject.toml and README updates for alpha releases
+        # For alpha releases, create a simpler changelog entry
+        with open("CHANGELOG.md", "r") as f:
+            original_content = f.read()
+
+        alpha_entry = (
+            f"### [{new_version}] - {datetime.now().strftime('%b %d, %Y')}\n\n"
+        )
+        alpha_entry += "Alpha release for testing.\n\n"
+
+        with open("CHANGELOG.md", "w") as f:
+            f.write(alpha_entry + original_content)
+
+        update_pyproject_toml(new_version)
+        files_to_add.extend(["pyproject.toml", "CHANGELOG.md"])
     else:
-        if not skip_changelog and not update_changelog(new_version):
+        if not update_changelog(new_version):
             print("Release process cancelled.")
             return
         update_pyproject_toml(new_version)
         files_to_add.extend(["pyproject.toml", "CHANGELOG.md"])
+
     # Add changes
     subprocess.run(["git", "add"] + files_to_add)
 
