@@ -148,18 +148,6 @@ function getBaseDefaults(config: Partial<BaseComponentConfig>): Required<Omit<Ba
 }
 
 function getColumnarParams(elem: BaseComponentConfig, count: number): {colors: Float32Array|null, alphas: Float32Array|null, scales: Float32Array|null} {
-
-  // // Check for Float64Arrays and throw if found
-  // if (elem.colors instanceof Float64Array) {
-  //   throw new Error('Float64Array not supported for colors - please use Float32Array');
-  // }
-  // if (elem.alphas instanceof Float64Array) {
-  //   throw new Error('Float64Array not supported for alphas - please use Float32Array');
-  // }
-  // if (elem.scales instanceof Float64Array) {
-  //   throw new Error('Float64Array not supported for scales - please use Float32Array');
-  // }
-
   const hasValidColors = elem.colors instanceof Float32Array && elem.colors.length >= count * 3;
   const hasValidAlphas = elem.alphas instanceof Float32Array && elem.alphas.length >= count;
   const hasValidScales = elem.scales instanceof Float32Array && elem.scales.length >= count;
@@ -2110,7 +2098,7 @@ export function SceneInner({
         const renderOffset = align16(dynamicBuffers.renderOffset);
         const pickingOffset = align16(dynamicBuffers.pickingOffset);
 
-        // Calculate total size for this type's render and picking data
+        // Calculate strides
         const renderStride = Math.ceil(info.datas[0].length / info.counts[0]) * 4;
         const pickingStride = spec.getFloatsPerPicking() * 4;
 
@@ -2134,13 +2122,10 @@ export function SceneInner({
         const pickingPipeline = spec.getPickingPipeline(device, bindGroupLayout, pipelineCache);
         if (!pickingPipeline) return;
 
-        // Try to reuse existing render object
-        let renderObject = renderObjectCache.current[type];
-
         // Build component offsets for this type's components
         const typeComponentOffsets: ComponentOffset[] = [];
         let typeStartIndex = globalStartIndex;
-        let totalInstanceCount = 0;  // Track total instances across all components of this type
+        let totalInstanceCount = 0;
         info.indices.forEach((componentIdx, i) => {
           const componentCount = info.counts[i];
           typeComponentOffsets.push({
@@ -2149,56 +2134,68 @@ export function SceneInner({
             count: componentCount
           });
           typeStartIndex += componentCount;
-          totalInstanceCount += componentCount;  // Add to total
+          totalInstanceCount += componentCount;
         });
         globalStartIndex = typeStartIndex;
 
-        if (!renderObject || renderObject.lastRenderCount !== totalInstanceCount) {
-          // Create new render object if none found or count changed
+        // Try to get existing render object
+        let renderObject = renderObjectCache.current[type];
+        const needNewRenderObject = !renderObject || renderObject.lastRenderCount !== totalInstanceCount;
+
+        // Create or update buffer info
+        const bufferInfo = {
+          buffer: dynamicBuffers.renderBuffer,
+          offset: renderOffset,
+          stride: renderStride
+        };
+        const pickingBufferInfo = {
+          buffer: dynamicBuffers.pickingBuffer,
+          offset: pickingOffset,
+          stride: pickingStride
+        };
+
+        // Create or reuse render data arrays
+        let renderData: Float32Array;
+        let pickingData: Float32Array;
+
+        if (needNewRenderObject) {
+          renderData = new Float32Array(totalInstanceCount * spec.getFloatsPerInstance());
+          pickingData = new Float32Array(totalInstanceCount * spec.getFloatsPerPicking());
+        } else {
+          renderData = renderObject.cachedRenderData;
+          pickingData = renderObject.cachedPickingData;
+        }
+
+        // Copy component data into combined render data array
+        let renderDataOffset = 0;
+        info.datas.forEach((data, i) => {
+          const componentCount = info.counts[i];
+          const floatsPerInstance = spec.getFloatsPerInstance();
+          const componentRenderData = new Float32Array(
+            renderData.buffer,
+            renderDataOffset * Float32Array.BYTES_PER_ELEMENT,
+            componentCount * floatsPerInstance
+          );
+          componentRenderData.set(data.subarray(0, componentCount * floatsPerInstance));
+          renderDataOffset += componentCount * floatsPerInstance;
+        });
+
+        if (needNewRenderObject) {
+          // Create new render object with all the required resources
           const geometryResource = getGeometryResource(resources, type);
-          const renderStride = Math.ceil(info.datas[0].length / info.counts[0]) * 4;
-          const pickingStride = spec.getFloatsPerPicking() * 4;
-
-          // Create combined render data array for all instances
-          const renderData = new Float32Array(totalInstanceCount * spec.getFloatsPerInstance());
-          let renderDataOffset = 0;
-          info.datas.forEach((data, i) => {
-            const componentCount = info.counts[i];
-            const floatsPerInstance = spec.getFloatsPerInstance();
-            const componentRenderData = new Float32Array(
-              renderData.buffer,
-              renderDataOffset * Float32Array.BYTES_PER_ELEMENT,
-              componentCount * floatsPerInstance
-            );
-            // Copy the component's render data
-            componentRenderData.set(data.subarray(0, componentCount * floatsPerInstance));
-            renderDataOffset += componentCount * floatsPerInstance;
-          });
-
-          // Create picking array sized for all instances
-          const pickingData = new Float32Array(totalInstanceCount * spec.getFloatsPerPicking());
-
           renderObject = {
             pipeline,
             pickingPipeline,
             vertexBuffers: [
               geometryResource.vb,
-              {
-                buffer: dynamicBuffers.renderBuffer,
-                offset: renderOffset,
-                stride: renderStride
-              }
+              bufferInfo
             ],
             indexBuffer: geometryResource.ib,
             indexCount: geometryResource.indexCount,
             instanceCount: totalInstanceCount,
             pickingVertexBuffers: [
               geometryResource.vb,
-              {
-                buffer: dynamicBuffers.pickingBuffer,
-                offset: pickingOffset,
-                stride: pickingStride
-              }
+              pickingBufferInfo
             ],
             pickingIndexBuffer: geometryResource.ib,
             pickingIndexCount: geometryResource.indexCount,
@@ -2212,42 +2209,17 @@ export function SceneInner({
             componentOffsets: typeComponentOffsets,
             spec: spec
           };
-
-          // Store in cache
           renderObjectCache.current[type] = renderObject;
         } else {
-          // Update existing render object
-          renderObject.vertexBuffers[1] = {
-            buffer: dynamicBuffers.renderBuffer,
-            offset: renderOffset,
-            stride: renderStride
-          };
-          renderObject.pickingVertexBuffers[1] = {
-            buffer: dynamicBuffers.pickingBuffer,
-            offset: pickingOffset,
-            stride: pickingStride
-          };
+          // Update existing render object with new buffer info and state
+          renderObject.vertexBuffers[1] = bufferInfo;
+          renderObject.pickingVertexBuffers[1] = pickingBufferInfo;
           renderObject.instanceCount = totalInstanceCount;
+          renderObject.pickingInstanceCount = totalInstanceCount;
           renderObject.componentIndex = info.indices[0];
-
-          // Update render data for all components
-          let renderDataOffset = 0;
-          info.datas.forEach((data, i) => {
-            const componentCount = info.counts[i];
-            const floatsPerInstance = spec.getFloatsPerInstance();
-            const componentRenderData = new Float32Array(
-              renderObject.cachedRenderData.buffer,
-              renderDataOffset * Float32Array.BYTES_PER_ELEMENT,
-              componentCount * floatsPerInstance
-            );
-            // Copy the component's render data
-            componentRenderData.set(data.subarray(0, componentCount * floatsPerInstance));
-            renderDataOffset += componentCount * floatsPerInstance;
-          });
-
           renderObject.componentOffsets = typeComponentOffsets;
           renderObject.spec = spec;
-
+          renderObject.pickingDataStale = true;
         }
 
         validRenderObjects.push(renderObject);
@@ -2739,22 +2711,16 @@ export function SceneInner({
 }
 
 // Add this helper function at the top of the file
-function getSortedIndices(cameraPos: glMatrix.vec3, centers: Float32Array, target: Uint32Array, distances: Float32Array): void {
+function getSortedIndices(cameraPos, centers, target, distances) {
   const count = target.length;
-
-  // Initialize indices
   for (let i = 0; i < count; i++) {
     target[i] = i;
+    const base = i * 3;
+    const dx = centers[base + 0] - cameraPos[0];
+    const dy = centers[base + 1] - cameraPos[1];
+    const dz = centers[base + 2] - cameraPos[2];
+    distances[i] = dx * dx + dy * dy + dz * dz;
   }
-
-  for (let i = 0; i < count; i++) {
-    const dx = centers[i*3+0] - cameraPos[0];
-    const dy = centers[i*3+1] - cameraPos[1];
-    const dz = centers[i*3+2] - cameraPos[2];
-    distances[i] = dx*dx + dy*dy + dz*dz;
-  }
-
-  // Sort indices based on distances (furthest to nearest)
   target.sort((a, b) => distances[b] - distances[a]);
 }
 
