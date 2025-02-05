@@ -199,6 +199,7 @@ export interface RenderObject {
     lastCameraPosition?: [number, number, number];
     sortedIndices?: Uint32Array;
     distances?: Float32Array;
+    lastSortedFrame?: number;  // Replace wasSorted with lastSortedFrame
   };
 
   componentOffsets: ComponentOffset[];  // Add this field
@@ -1532,6 +1533,45 @@ const primitiveRegistry: Record<ComponentConfig['type'], PrimitiveSpec<any>> = {
  * 8) Scene
  ******************************************************/
 
+const ensurePickingData = (device: GPUDevice, components: ComponentConfig[], renderObject: RenderObject) => {
+  if (!renderObject.pickingDataStale) return;
+
+  const { spec, componentOffsets } = renderObject;
+
+  if (!spec) return;
+
+  // Get sorted indices if we have transparency
+  const sortedIndices = renderObject.transparencyInfo?.sortedIndices;
+
+  // Build picking data for each component in this render object
+  let pickingDataOffset = 0;
+  const floatsPerInstance = spec.getFloatsPerPicking();
+
+  componentOffsets.forEach(offset => {
+    const componentCount = offset.count;
+    // Create a view into the existing picking data array
+    const componentPickingData = new Float32Array(
+      renderObject.cachedPickingData.buffer,
+      renderObject.cachedPickingData.byteOffset + pickingDataOffset * Float32Array.BYTES_PER_ELEMENT,
+      componentCount * floatsPerInstance
+    );
+    spec.buildPickingData(components![offset.componentIdx], componentPickingData, offset.start, sortedIndices);
+    pickingDataOffset += componentCount * floatsPerInstance;
+  });
+
+  // Write picking data to buffer
+  const pickingInfo = renderObject.pickingVertexBuffers[1] as BufferInfo;
+  device.queue.writeBuffer(
+    pickingInfo.buffer,
+    pickingInfo.offset,
+    renderObject.cachedPickingData.buffer,
+    renderObject.cachedPickingData.byteOffset,
+    renderObject.cachedPickingData.byteLength
+  );
+
+  renderObject.pickingDataStale = false;
+};
+
 export function SceneInner({
   components,
   containerWidth,
@@ -1562,6 +1602,7 @@ export function SceneInner({
     dynamicBuffers: DynamicBuffers | null;
     resources: GeometryResources;
     renderedComponents?: ComponentConfig[];
+    frameCount?: number;
   } | null>(null);
 
   const [isReady, setIsReady] = useState(false);
@@ -2048,20 +2089,6 @@ export function SceneInner({
           // Create picking array sized for all instances
           const pickingData = new Float32Array(totalInstanceCount * spec.getFloatsPerPicking());
 
-          // Build picking data for each component
-          let pickingDataOffset = 0;
-          info.indices.forEach((componentIdx, i) => {
-            const componentCount = info.counts[i];
-            const componentPickingData = new Float32Array(
-              pickingData.buffer,
-              pickingDataOffset * Float32Array.BYTES_PER_ELEMENT,
-              componentCount * spec.getFloatsPerPicking()
-            );
-            const baseID = typeComponentOffsets[i].start;
-            spec.buildPickingData(components[componentIdx], componentPickingData, baseID);
-            pickingDataOffset += componentCount * spec.getFloatsPerPicking();
-          });
-
           // Write combined render data to buffer
           device.queue.writeBuffer(
             dynamicBuffers.renderBuffer,
@@ -2097,7 +2124,7 @@ export function SceneInner({
             pickingIndexCount: geometryResource.indexCount,
             pickingVertexCount: geometryResource.vertexCount ?? 0,
             pickingInstanceCount: totalInstanceCount,
-            pickingDataStale: false,
+            pickingDataStale: true,
             componentIndex: info.indices[0],
             cachedRenderData: renderData,
             cachedPickingData: pickingData,
@@ -2150,23 +2177,6 @@ export function SceneInner({
           renderObject.componentOffsets = typeComponentOffsets;
           renderObject.spec = spec;
 
-          // Update picking data if needed
-          if (renderObject.pickingDataStale) {
-            // Build picking data for each component
-            let pickingDataOffset = 0;
-            info.indices.forEach((componentIdx, i) => {
-              const componentCount = info.counts[i];
-              const componentPickingData = new Float32Array(
-                renderObject.cachedPickingData.buffer,
-                pickingDataOffset * Float32Array.BYTES_PER_ELEMENT,
-                componentCount * spec.getFloatsPerPicking()
-              );
-              const baseID = typeComponentOffsets[i].start;
-              spec.buildPickingData(components[componentIdx], componentPickingData, baseID);
-              pickingDataOffset += componentCount * spec.getFloatsPerPicking();
-            });
-            renderObject.pickingDataStale = false;
-          }
         }
 
         // Write picking data to buffer
@@ -2219,12 +2229,16 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
 }
 
   // Update renderFrame to handle transparency sorting
-  const renderFrame = useCallback((camState: CameraState) => {
+  const renderFrame = useCallback(function renderFrameInner(camState: CameraState) {
     if(!gpuRef.current) return;
     const {
       device, context, uniformBuffer, uniformBindGroup,
       renderObjects, depthTexture
     } = gpuRef.current;
+
+    // Increment frame counter
+    gpuRef.current.frameCount = (gpuRef.current.frameCount || 0) + 1;
+    const currentFrame = gpuRef.current.frameCount;
 
     // Update transparency sorting if needed
     const cameraPos: [number, number, number] = [
@@ -2233,8 +2247,8 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
       camState.position[2]
     ];
 
-    // Check each render object for transparency updates
-    renderObjects.forEach(ro => {
+    // First pass: Sort all objects that need it
+    renderObjects.forEach(function sortAllObjects(ro) {
       if (!ro.transparencyInfo?.needsSort) return;
 
       // Check if camera has moved enough to require resorting
@@ -2257,17 +2271,21 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
       // Get sorted indices and store them
       getSortedIndices(cameraPos, ro.transparencyInfo.centers, ro.transparencyInfo.sortedIndices, ro.transparencyInfo.distances!);
 
-      // Update buffer with sorted data
+      // Mark frame when sorting occurred
+      ro.transparencyInfo.lastSortedFrame = currentFrame;
+      ro.transparencyInfo.lastCameraPosition = cameraPos;
+    });
+    // Second pass: Update buffers for all objects that were sorted
+    renderObjects.forEach(function updateSortedBuffers(ro) {
+      if (!ro.transparencyInfo?.needsSort || ro.transparencyInfo.lastSortedFrame !== currentFrame) return;
+
       const component = components[ro.componentIndex];
       const spec = primitiveRegistry[component.type];
       if (!spec || !gpuRef.current) return;
 
       // Rebuild render data with new sorting
       spec.buildRenderData(component, ro.cachedRenderData, ro.transparencyInfo.sortedIndices);
-
-      // Also update picking data with new sorting
-      const baseID = gpuRef.current.componentBaseId[ro.componentIndex];
-      spec.buildPickingData(component, ro.cachedPickingData, baseID, ro.transparencyInfo.sortedIndices);
+      ro.pickingDataStale = true;
 
       // Write render data to GPU buffer
       const vertexInfo = ro.vertexBuffers[1] as BufferInfo;
@@ -2279,18 +2297,6 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
         ro.cachedRenderData.byteLength
       );
 
-      // Write picking data to GPU buffer
-      const pickingInfo = ro.pickingVertexBuffers[1] as BufferInfo;
-      device.queue.writeBuffer(
-        pickingInfo.buffer,
-        pickingInfo.offset,
-        ro.cachedPickingData.buffer,
-        ro.cachedPickingData.byteOffset,
-        ro.cachedPickingData.byteLength
-      );
-
-      // Update last camera position
-      ro.transparencyInfo.lastCameraPosition = cameraPos;
     });
 
     // Update camera uniforms
@@ -2406,10 +2412,7 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
 
       // Ensure picking data is ready for all objects
       for (let i = 0; i < renderObjects.length; i++) {
-        const ro = renderObjects[i];
-        if (ro.pickingDataStale) {
-          ensurePickingData(ro, components[i]);
-        }
+        ensurePickingData(gpuRef.current.device, gpuRef.current.renderedComponents, renderObjects[i]);
       }
 
       // Convert screen coordinates to device pixels
@@ -2781,34 +2784,6 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
     return () => canvas.removeEventListener('wheel', handleWheel);
   }, [handleCameraUpdate]);
 
-  // Move ensurePickingData inside component
-  const ensurePickingData = useCallback((renderObject: RenderObject, component: ComponentConfig) => {
-    if (!renderObject.pickingDataStale) return;
-    if (!gpuRef.current) return;
-
-    const { device, bindGroupLayout, pipelineCache } = gpuRef.current;
-    const spec = primitiveRegistry[component.type];
-    if (!spec) return;
-
-    // Just use the stored indices - no need to recalculate!
-    const sortedIndices = renderObject.transparencyInfo?.sortedIndices;
-
-    // Build picking data with same sorting as render
-    const baseID = gpuRef.current.componentBaseId[renderObject.componentIndex];
-    spec.buildPickingData(component, renderObject.cachedPickingData, baseID, sortedIndices);
-
-    // Write picking data to buffer
-    const pickingInfo = renderObject.pickingVertexBuffers[1] as BufferInfo;
-    device.queue.writeBuffer(
-      pickingInfo.buffer,
-      pickingInfo.offset,
-      renderObject.cachedPickingData.buffer,
-      renderObject.cachedPickingData.byteOffset,
-      renderObject.cachedPickingData.byteLength
-    );
-
-    renderObject.pickingDataStale = false;
-  }, []);
 
   return (
     <div style={{ width: '100%', border: '1px solid #ccc' }}>

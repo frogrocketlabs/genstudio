@@ -285,5 +285,3 @@ scene_grid_cuboids = Cuboid(
     | scene_cuboids & scene_ellipsoids
     | mixed_scene & scene_grid_cuboids
 )
-# %%
-scene_ellipsoids
