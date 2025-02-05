@@ -2290,7 +2290,7 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
 
     // Second pass: Update buffers for all objects that were sorted
     renderObjects.forEach(function updateSortedBuffers(ro) {
-      if (!ro.needsSort || ro.lastSortedFrame !== currentFrame) return;
+      if (!ro.needsSort || ro.lastSortedFrame === currentFrame) return;
 
       const component = components[ro.componentIndex];
       const spec = primitiveRegistry[component.type];
