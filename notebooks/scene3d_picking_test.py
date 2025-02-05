@@ -62,6 +62,22 @@ scene_ellipsoids = (
             ),
         ],
     )
+    + Ellipsoid(
+        centers=np.array([[-1, 0, 0], [-1, 1, 0], [-1, 0.5, 1]]),
+        colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
+        radius=[0.4, 0.4, 0.4],
+        alpha=0.5,
+        onHover=js(
+            "(i) => $state.update({hover_ellipsoid_2: typeof i === 'number' ? [i] : []})"
+        ),
+        decorations=[
+            deco(
+                js("$state.hover_ellipsoid_2"),
+                color=[1, 1, 0],
+                scale=1.2,
+            ),
+        ],
+    )
     + EllipsoidAxes(
         centers=np.array(
             [[1, 0, 0], [1, 1, 0], [1, 0.5, 1]]
@@ -270,3 +286,4 @@ scene_grid_cuboids = Cuboid(
     | mixed_scene & scene_grid_cuboids
 )
 # %%
+scene_ellipsoids

@@ -1900,23 +1900,15 @@ export function SceneInner({
     // Initialize componentBaseId array and build ID mapping
     gpuRef.current.componentBaseId = new Array(components.length).fill(0);
 
-    // Track component offsets
-    const componentOffsets: ComponentOffset[] = [];
-    let currentStart = 0;
+    // Track global start index for all components
+    let globalStartIndex = 0;
 
     // Collect render data using helper
     const typeArrays = collectTypeData(
       components,
       (comp, spec) => {
         const count = spec.getCount(comp);
-        if (count > 0) {
-            componentOffsets.push({
-                componentIdx: components.indexOf(comp),
-                start: currentStart,
-                count
-            });
-            currentStart += count;
-        }
+        if (count === 0) return new Float32Array(0);
 
         // Try to reuse existing render object's array
         const existingRO = renderObjectCache.current[comp.type];
@@ -1943,12 +1935,17 @@ export function SceneInner({
     let totalRenderSize = 0;
     let totalPickingSize = 0;
     typeArrays.forEach((info: TypeInfo, type: ComponentType) => {
-      totalRenderSize += info.totalSize;
       const spec = primitiveRegistry[type];
-      if (spec) {
-        const count = info.counts[0];
-        totalPickingSize += count * spec.getFloatsPerPicking() * 4; // 4 bytes per float
-      }
+      if (!spec) return;
+
+      // Calculate total instance count for this type
+      const totalInstanceCount = info.counts.reduce((sum, count) => sum + count, 0);
+
+      // Calculate total size needed for all instances of this type
+      const floatsPerInstance = spec.getFloatsPerInstance();
+      const renderStride = Math.ceil(floatsPerInstance * 4);  // 4 bytes per float
+      totalRenderSize += Math.ceil((totalInstanceCount * renderStride) / 16) * 16;  // Align to 16 bytes
+      totalPickingSize += Math.ceil((totalInstanceCount * spec.getFloatsPerPicking() * 4) / 16) * 16;  // Align to 16 bytes
     });
 
     // Create or recreate dynamic buffers if needed
@@ -1979,15 +1976,20 @@ export function SceneInner({
       if (!spec) return;
 
       try {
-        const renderOffset = Math.ceil(dynamicBuffers.renderOffset / 4) * 4;
-        const pickingOffset = Math.ceil(dynamicBuffers.pickingOffset / 4) * 4;
-        const count = info.counts[0];
+        // Ensure 4-byte alignment for all offsets
+        const renderOffset = Math.ceil(dynamicBuffers.renderOffset / 16) * 16;  // Use 16-byte alignment to be safe
+        const pickingOffset = Math.ceil(dynamicBuffers.pickingOffset / 16) * 16;
 
-        // Write render data to buffer
+        // Calculate total size for this type's render and picking data
+        const renderStride = Math.ceil(info.datas[0].length / info.counts[0]) * 4;
+        const pickingStride = spec.getFloatsPerPicking() * 4;
+
+        // Write render data to buffer with proper alignment
         info.datas.forEach((data: Float32Array, i: number) => {
+          const alignedOffset = renderOffset + Math.ceil(info.offsets[i] / 16) * 16;
           device.queue.writeBuffer(
             dynamicBuffers.renderBuffer,
-            renderOffset + info.offsets[i],
+            alignedOffset,
             data.buffer,
             data.byteOffset,
             data.byteLength
@@ -2005,21 +2007,69 @@ export function SceneInner({
         // Try to reuse existing render object
         let renderObject = renderObjectCache.current[type];
 
-        // Find the starting offset for this component's instances
-        const componentOffset = componentOffsets.find(offset => offset.componentIdx === info.indices[0]);
-        const baseID = componentOffset ? componentOffset.start : 0;
+        // Build component offsets for this type's components
+        const typeComponentOffsets: ComponentOffset[] = [];
+        let typeStartIndex = globalStartIndex;
+        let totalInstanceCount = 0;  // Track total instances across all components of this type
+        info.indices.forEach((componentIdx, i) => {
+          const componentCount = info.counts[i];
+          typeComponentOffsets.push({
+            componentIdx,
+            start: typeStartIndex,
+            count: componentCount
+          });
+          typeStartIndex += componentCount;
+          totalInstanceCount += componentCount;  // Add to total
+        });
+        globalStartIndex = typeStartIndex;
 
-        if (!renderObject || renderObject.lastRenderCount !== count) {
+        if (!renderObject || renderObject.lastRenderCount !== totalInstanceCount) {
           // Create new render object if none found or count changed
           const geometryResource = getGeometryResource(resources, type);
-          const stride = Math.ceil(info.datas[0].length / count) * 4;
+          const renderStride = Math.ceil(info.datas[0].length / info.counts[0]) * 4;
+          const pickingStride = spec.getFloatsPerPicking() * 4;
 
-          // Create both render and picking arrays
-          const renderData = info.datas[0];
-          const pickingData = new Float32Array(count * spec.getFloatsPerPicking());
+          // Create combined render data array for all instances
+          const renderData = new Float32Array(totalInstanceCount * spec.getFloatsPerInstance());
+          let renderDataOffset = 0;
+          info.datas.forEach((data, i) => {
+            const componentCount = info.counts[i];
+            const floatsPerInstance = spec.getFloatsPerInstance();
+            const componentRenderData = new Float32Array(
+              renderData.buffer,
+              renderDataOffset * Float32Array.BYTES_PER_ELEMENT,
+              componentCount * floatsPerInstance
+            );
+            // Copy the component's render data
+            componentRenderData.set(data.subarray(0, componentCount * floatsPerInstance));
+            renderDataOffset += componentCount * floatsPerInstance;
+          });
 
-          // Build picking data with correct baseID
-          spec.buildPickingData(components[info.indices[0]], pickingData, baseID);
+          // Create picking array sized for all instances
+          const pickingData = new Float32Array(totalInstanceCount * spec.getFloatsPerPicking());
+
+          // Build picking data for each component
+          let pickingDataOffset = 0;
+          info.indices.forEach((componentIdx, i) => {
+            const componentCount = info.counts[i];
+            const componentPickingData = new Float32Array(
+              pickingData.buffer,
+              pickingDataOffset * Float32Array.BYTES_PER_ELEMENT,
+              componentCount * spec.getFloatsPerPicking()
+            );
+            const baseID = typeComponentOffsets[i].start;
+            spec.buildPickingData(components[componentIdx], componentPickingData, baseID);
+            pickingDataOffset += componentCount * spec.getFloatsPerPicking();
+          });
+
+          // Write combined render data to buffer
+          device.queue.writeBuffer(
+            dynamicBuffers.renderBuffer,
+            renderOffset,
+            renderData.buffer,
+            renderData.byteOffset,
+            renderData.byteLength
+          );
 
           renderObject = {
             pipeline,
@@ -2029,31 +2079,31 @@ export function SceneInner({
               {
                 buffer: dynamicBuffers.renderBuffer,
                 offset: renderOffset,
-                stride: stride
+                stride: renderStride
               }
             ],
             indexBuffer: geometryResource.ib,
             indexCount: geometryResource.indexCount,
-            instanceCount: info.totalCount,
+            instanceCount: totalInstanceCount,
             pickingVertexBuffers: [
               geometryResource.vb,
               {
                 buffer: dynamicBuffers.pickingBuffer,
                 offset: pickingOffset,
-                stride: spec.getFloatsPerPicking() * 4
+                stride: pickingStride
               }
             ],
             pickingIndexBuffer: geometryResource.ib,
             pickingIndexCount: geometryResource.indexCount,
             pickingVertexCount: geometryResource.vertexCount ?? 0,
-            pickingInstanceCount: info.totalCount,
+            pickingInstanceCount: totalInstanceCount,
             pickingDataStale: false,
             componentIndex: info.indices[0],
             cachedRenderData: renderData,
             cachedPickingData: pickingData,
-            lastRenderCount: count,
-            componentOffsets: componentOffsets,
-            spec: spec  // Store reference to the spec
+            lastRenderCount: totalInstanceCount,
+            componentOffsets: typeComponentOffsets,
+            spec: spec
           };
 
           // Store in cache
@@ -2063,22 +2113,58 @@ export function SceneInner({
           renderObject.vertexBuffers[1] = {
             buffer: dynamicBuffers.renderBuffer,
             offset: renderOffset,
-            stride: Math.ceil(info.datas[0].length / count) * 4
+            stride: renderStride
           };
           renderObject.pickingVertexBuffers[1] = {
             buffer: dynamicBuffers.pickingBuffer,
             offset: pickingOffset,
-            stride: spec.getFloatsPerPicking() * 4
+            stride: pickingStride
           };
-          renderObject.instanceCount = info.totalCount;
+          renderObject.instanceCount = totalInstanceCount;
           renderObject.componentIndex = info.indices[0];
-          renderObject.cachedRenderData = info.datas[0];
-          renderObject.componentOffsets = componentOffsets;
-          renderObject.spec = spec;  // Update spec reference even when reusing object
+
+          // Update render data for all components
+          let renderDataOffset = 0;
+          info.datas.forEach((data, i) => {
+            const componentCount = info.counts[i];
+            const floatsPerInstance = spec.getFloatsPerInstance();
+            const componentRenderData = new Float32Array(
+              renderObject.cachedRenderData.buffer,
+              renderDataOffset * Float32Array.BYTES_PER_ELEMENT,
+              componentCount * floatsPerInstance
+            );
+            // Copy the component's render data
+            componentRenderData.set(data.subarray(0, componentCount * floatsPerInstance));
+            renderDataOffset += componentCount * floatsPerInstance;
+          });
+
+          // Write updated render data to buffer
+          device.queue.writeBuffer(
+            dynamicBuffers.renderBuffer,
+            renderOffset,
+            renderObject.cachedRenderData.buffer,
+            renderObject.cachedRenderData.byteOffset,
+            renderObject.cachedRenderData.byteLength
+          );
+
+          renderObject.componentOffsets = typeComponentOffsets;
+          renderObject.spec = spec;
 
           // Update picking data if needed
           if (renderObject.pickingDataStale) {
-            spec.buildPickingData(components[info.indices[0]], renderObject.cachedPickingData, baseID);
+            // Build picking data for each component
+            let pickingDataOffset = 0;
+            info.indices.forEach((componentIdx, i) => {
+              const componentCount = info.counts[i];
+              const componentPickingData = new Float32Array(
+                renderObject.cachedPickingData.buffer,
+                pickingDataOffset * Float32Array.BYTES_PER_ELEMENT,
+                componentCount * spec.getFloatsPerPicking()
+              );
+              const baseID = typeComponentOffsets[i].start;
+              spec.buildPickingData(components[componentIdx], componentPickingData, baseID);
+              pickingDataOffset += componentCount * spec.getFloatsPerPicking();
+            });
             renderObject.pickingDataStale = false;
           }
         }
@@ -2097,8 +2183,10 @@ export function SceneInner({
         renderObject.transparencyInfo = getTransparencyInfo(component, spec);
 
         validRenderObjects.push(renderObject);
-        dynamicBuffers.renderOffset = renderOffset + info.totalSize;
-        dynamicBuffers.pickingOffset = pickingOffset + (count * spec.getFloatsPerPicking() * 4);
+
+        // Update buffer offsets ensuring alignment
+        dynamicBuffers.renderOffset = renderOffset + Math.ceil(info.totalSize / 16) * 16;
+        dynamicBuffers.pickingOffset = pickingOffset + Math.ceil((totalInstanceCount * spec.getFloatsPerPicking() * 4) / 16) * 16;
 
       } catch (error) {
         console.error(`Error creating render object for type ${type}:`, error);
@@ -2423,19 +2511,23 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
         return;
     }
 
-    // Find which component this instance belongs to
-    const ro = gpuRef.current.renderObjects[0];  // We combine into a single render object
-    if (!ro?.componentOffsets) return;
-
+    // Find which component this instance belongs to by searching through all render objects
     let newHoverState = null;
-    for (const offset of ro.componentOffsets) {
-        if (combinedIndex >= offset.start && combinedIndex < offset.start + offset.count) {
-            newHoverState = {
-                componentIdx: offset.componentIdx,
-                instanceIdx: combinedIndex - offset.start
-            };
-            break;
+    for (const ro of gpuRef.current.renderObjects) {
+        // Skip if no component offsets
+        if (!ro?.componentOffsets) continue;
+
+        // Check each component in this render object
+        for (const offset of ro.componentOffsets) {
+            if (combinedIndex >= offset.start && combinedIndex < offset.start + offset.count) {
+                newHoverState = {
+                    componentIdx: offset.componentIdx,
+                    instanceIdx: combinedIndex - offset.start
+                };
+                break;
+            }
         }
+        if (newHoverState) break;  // Found the matching component
     }
 
     // If hover state hasn't changed, do nothing
@@ -2471,18 +2563,21 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
     const combinedIndex = unpackID(pickedID);
     if (combinedIndex === null) return;
 
-    // Find which component this instance belongs to
-    const ro = gpuRef.current.renderObjects[0];  // We combine into a single render object
-    if (!ro?.componentOffsets) return;
+    // Find which component this instance belongs to by searching through all render objects
+    for (const ro of gpuRef.current.renderObjects) {
+        // Skip if no component offsets
+        if (!ro?.componentOffsets) continue;
 
-    for (const offset of ro.componentOffsets) {
-        if (combinedIndex >= offset.start && combinedIndex < offset.start + offset.count) {
-            const componentIdx = offset.componentIdx;
-            const instanceIdx = combinedIndex - offset.start;
-            if (componentIdx >= 0 && componentIdx < components.length) {
-                components[componentIdx].onClick?.(instanceIdx);
+        // Check each component in this render object
+        for (const offset of ro.componentOffsets) {
+            if (combinedIndex >= offset.start && combinedIndex < offset.start + offset.count) {
+                const componentIdx = offset.componentIdx;
+                const instanceIdx = combinedIndex - offset.start;
+                if (componentIdx >= 0 && componentIdx < components.length) {
+                    components[componentIdx].onClick?.(instanceIdx);
+                }
+                return;  // Found and handled the click
             }
-            break;
         }
     }
   }
