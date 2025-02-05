@@ -194,8 +194,6 @@ export interface RenderObject {
   // Flattened transparency properties
   needsSort?: boolean;
   centers?: Float32Array;
-  centerStride?: number;
-  centerOffset?: number;
   sortedIndices?: Uint32Array;
   distances?: Float32Array;
   lastSortedFrame?: number;
@@ -274,7 +272,7 @@ interface PrimitiveSpec<E> {
    * Used for transparency sorting and distance calculations.
    * @returns Object containing centers array and stride, or undefined if not applicable
    */
-  getCenters(component: E): { centers: Float32Array, stride: number, offset: number } | undefined;
+  getCenters(component: E): Float32Array;
 
   /**
    * Builds vertex buffer data for rendering.
@@ -413,11 +411,7 @@ const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
   },
 
   getCenters(elem) {
-    return {
-      centers: elem.positions,
-      stride: 3,
-      offset: 0
-    };
+    return elem.positions;
   },
 
   buildRenderData(elem, target, sortedIndices?: Uint32Array) {
@@ -606,13 +600,7 @@ const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
     return 7;  // position(3) + size(3) + pickID(1)
   },
 
-  getCenters(elem) {
-    return {
-      centers: elem.centers,
-      stride: 3,
-      offset: 0
-    };
-  },
+  getCenters(elem) {return elem.centers;},
 
   buildRenderData(elem, target, sortedIndices?: Uint32Array) {
     const count = elem.centers.length / 3;
@@ -786,13 +774,7 @@ const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
     return 7;  // position(3) + size(3) + pickID(1)
   },
 
-  getCenters(elem) {
-    return {
-      centers: elem.centers,
-      stride: 3,
-      offset: 0
-    };
-  },
+  getCenters(elem) {return elem.centers},
 
   buildRenderData(elem, target, sortedIndices?: Uint32Array) {
     const count = elem.centers.length / 3;
@@ -974,13 +956,8 @@ const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
   getFloatsPerPicking() {
     return 7;  // position(3) + size(3) + pickID(1)
   },
-  getCenters(elem) {
-    return {
-      centers: elem.centers,
-      stride: 3,
-      offset: 0
-    };
-  },
+  getCenters(elem) { return elem.centers},
+
   buildRenderData(elem, target, sortedIndices?: Uint32Array) {
     const count = elem.centers.length / 3;
     if(count === 0) return false;
@@ -1174,11 +1151,7 @@ const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
           centers[segIndex*3+2] = (elem.positions[p*4+2] + elem.positions[(p+1)*4+2]) * 0.5;
           segIndex++;
         }
-        return {
-          centers,
-          stride: 3,
-          offset: 0
-        }
+        return centers
   },
 
   getFloatsPerInstance() {
@@ -1798,7 +1771,6 @@ export function SceneInner({
     dynamicBuffers: DynamicBuffers | null;
     resources: GeometryResources;
     renderedComponents?: ComponentConfig[];
-    frameCount?: number;
   } | null>(null);
 
   const [isReady, setIsReady] = useState(false);
@@ -2328,10 +2300,6 @@ export function SceneInner({
       }
     gpuRef.current.lastCameraPosition = camState.position;
 
-    // Increment frame counter
-    gpuRef.current.frameCount = (gpuRef.current.frameCount || 0) + 1;
-    const currentFrame = gpuRef.current.frameCount;
-
     // First pass: Sort all objects that need it
     renderObjects.forEach(function sortAllObjects(ro) {
       if (!ro.needsSort) return;
@@ -2344,7 +2312,7 @@ export function SceneInner({
         ro.distances = new Float32Array(count);
       }
 
-      if (ro.centers && ro.centerStride !== undefined) {
+      if (ro.centers) {
         getSortedIndices(camState.position, ro.centers, ro.sortedIndices, ro.distances!);
       }
 
@@ -2808,22 +2776,13 @@ function componentHasAlpha(component: ComponentConfig) {
   )
 }
 
-// Simplify getTransparencyProperties using getCenters
-function getTransparencyProperties(component: ComponentConfig, spec: PrimitiveSpec<any>): Pick<RenderObject, 'needsSort' | 'centers' | 'centerStride' | 'centerOffset'> | undefined {
+
+function getTransparencyProperties(component: ComponentConfig, spec: PrimitiveSpec<any>): Pick<RenderObject, 'needsSort' | 'centers'> | undefined {
   const count = spec.getCount(component);
   if (count === 0) return undefined;
-
-  const defaults = getBaseDefaults(component);
-  const { alphas } = getColumnarParams(component, count);
-  const needsSort = hasTransparency(alphas, defaults.alpha, component.decorations);
-  if (!needsSort) return undefined;
-
-  const centerInfo = spec.getCenters(component);
-  if (!centerInfo) return undefined;
+  if (!componentHasAlpha(component)) return undefined;
   return {
-    needsSort,
-    centers: centerInfo.centers,
-    centerStride: centerInfo.stride,
-    centerOffset: centerInfo.offset
+    needsSort: true,
+    centers: spec.getCenters(component)
   };
 }
