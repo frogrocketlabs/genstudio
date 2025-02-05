@@ -191,6 +191,7 @@ export interface RenderObject {
   // Temporary sorting state
   sortedIndices?: Uint32Array;
   distances?: Float32Array;
+  centers?: Float32Array;           // Add centers array for reuse
 
   componentOffsets: ComponentOffset[];  // Add this field
 
@@ -1735,6 +1736,53 @@ function computeUniformData(containerWidth: number, containerHeight: number, cam
   ]);
 }
 
+// Helper to manage reusable arrays in RenderObject
+function ensureArray<T extends Float32Array | Uint32Array>(
+  current: T | undefined,
+  length: number,
+  constructor: new (length: number) => T
+): T {
+  if (!current || current.length !== length) {
+    return new constructor(length);
+  }
+  return current;
+}
+
+// Helper to check if camera has moved significantly
+function hasCameraMoved(current: glMatrix.vec3, last: glMatrix.vec3 | undefined): boolean {
+  if (!last) return true;
+  const dx = current[0] - last[0];
+  const dy = current[1] - last[1];
+  const dz = current[2] - last[2];
+  return (dx*dx + dy*dy + dz*dz) > 0.0001;
+}
+
+// Helper to update sorting arrays and perform sort
+function updateInstanceSorting(
+  ro: RenderObject,
+  components: ComponentConfig[],
+  cameraPos: glMatrix.vec3
+): void {
+  const totalCount = ro.lastRenderCount;
+
+  // Ensure all arrays exist and are correctly sized
+  ro.centers = ensureArray(ro.centers, totalCount * 3, Float32Array);
+  ro.sortedIndices = ensureArray(ro.sortedIndices, totalCount, Uint32Array);
+  ro.distances = ensureArray(ro.distances, totalCount, Float32Array);
+
+  // Collect centers from all components
+  let centerOffset = 0;
+  ro.componentOffsets.forEach(offset => {
+    const component = components[offset.componentIdx];
+    const componentCenters = ro.spec.getCenters(component);
+    ro.centers!.set(componentCenters, centerOffset);
+    centerOffset += componentCenters.length;
+  });
+
+  // Perform the sort
+  getSortedIndices(cameraPos, ro.centers, ro.sortedIndices, ro.distances);
+}
+
 export function SceneInner({
   components,
   containerWidth,
@@ -2241,12 +2289,11 @@ export function SceneInner({
    ******************************************************/
 
 
-  // Update renderFrame to handle transparency sorting
+  // Update renderFrame to use new helpers
   const renderFrame = useCallback(function renderFrameInner(camState: CameraState, components?: ComponentConfig[]) {
     if(!gpuRef.current) return;
 
-    components = components || gpuRef.current.renderedComponents
-
+    components = components || gpuRef.current.renderedComponents;
     const componentsChanged = gpuRef.current.renderedComponents !== components;
 
     if (componentsChanged) {
@@ -2259,37 +2306,20 @@ export function SceneInner({
       renderObjects, depthTexture
     } = gpuRef.current;
 
-    let cameraMoved = false;
-    const lastPos = gpuRef.current.lastCameraPosition;
-      if (lastPos) {
-        const dx = camState.position[0] - lastPos[0];
-        const dy = camState.position[1] - lastPos[1];
-        const dz = camState.position[2] - lastPos[2];
-        const moveDistSq = dx*dx + dy*dy + dz*dz;
-        cameraMoved = moveDistSq > 0.0001
-      }
+    const cameraMoved = hasCameraMoved(camState.position, gpuRef.current.lastCameraPosition);
     gpuRef.current.lastCameraPosition = camState.position;
 
-    // First pass: Sort all objects that need transparency sorting
-    renderObjects.forEach(function sortAllObjects(ro) {
+    // Update sorting for objects that need it
+    renderObjects.forEach(ro => {
       const component = components![ro.componentIndex];
       if (!componentHasAlpha(component)) return;
       if (!componentsChanged && !cameraMoved) return;
 
-      const spec = ro.spec;
-      const centers = spec.getCenters(component);
-
-      // Get or create sorted indices array
-      const count = ro.lastRenderCount;
-      if (!ro.sortedIndices || ro.sortedIndices.length !== count) {
-        ro.sortedIndices = new Uint32Array(count);
-        ro.distances = new Float32Array(count);
-      }
-
-      getSortedIndices(camState.position, centers, ro.sortedIndices, ro.distances!);
+      // Update sorting
+      updateInstanceSorting(ro, components!, camState.position);
 
       // Rebuild render data with new sorting
-      spec.buildRenderData(component, ro.cachedRenderData, ro.sortedIndices);
+      ro.spec.buildRenderData(component, ro.cachedRenderData, ro.sortedIndices);
       ro.pickingDataStale = true;
 
       // Write render data to GPU buffer
@@ -2711,7 +2741,12 @@ export function SceneInner({
 }
 
 // Add this helper function at the top of the file
-function getSortedIndices(cameraPos, centers, target, distances) {
+function getSortedIndices(
+  cameraPos: glMatrix.vec3,
+  centers: Float32Array,
+  target: Uint32Array,
+  distances: Float32Array
+): void {
   const count = target.length;
   for (let i = 0; i < count; i++) {
     target[i] = i;
@@ -2721,7 +2756,7 @@ function getSortedIndices(cameraPos, centers, target, distances) {
     const dz = centers[base + 2] - cameraPos[2];
     distances[i] = dx * dx + dy * dy + dz * dz;
   }
-  target.sort((a, b) => distances[b] - distances[a]);
+  target.sort((a: number, b: number) => distances[b] - distances[a]);
 }
 
 function componentHasAlpha(component: ComponentConfig) {
