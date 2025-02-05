@@ -18,10 +18,11 @@ from genstudio.plot import js
             "num_particles": 500000,
             "alpha": 1.0,
             "frame": 0,
+            "point_size": 0.003,
             # Pre-generate frames using JavaScript
             "frames": js(
                 """
-                const n = $state.num_particles;
+                const n = 1000000;
                 const num_frames = 30;
                 const frames = [];  // Use regular array to store Float32Arrays
 
@@ -34,7 +35,7 @@ from genstudio.plot import js
                 const scale = 0.04;
 
                 for (let frame = 0; frame < num_frames; frame++) {
-                    const t = frame * 0.05;
+                    const t = frame * (2 * Math.PI / num_frames); // Normalize t to complete one full cycle
                     const frameData = new Float32Array(n * 3);
                     let idx = 0;
 
@@ -80,7 +81,7 @@ from genstudio.plot import js
             # Pre-generate colors (these don't change per frame)
             "colors": js(
                 """
-                const n = $state.num_particles;
+                const n = 1000000;
                 const colors = new Float32Array(n * 3);
 
                 for (let i = 0; i < n; i++) {
@@ -109,56 +110,11 @@ from genstudio.plot import js
                     "type": "range",
                     "min": 100,
                     "max": 1000000,
-                    "step": 10000,
+                    "step": 1000,
                     "value": js("$state.num_particles"),
-                    "onChange": js("""(e) => {
-                        const n = parseInt(e.target.value);
-                        // When particle count changes, regenerate frames and colors
-                        $state.update({
-                            num_particles: n,
-                            frames: (() => {
-                                const num_frames = 30;
-                                const frames = [];  // Use regular array to store Float32Arrays
-
-                                for (let frame = 0; frame < num_frames; frame++) {
-                                    const t = frame * 0.05;
-                                    const frameData = new Float32Array(n * 3);
-
-                                    for (let i = 0; i < n; i++) {
-                                        const u = Math.random() * 2 * Math.PI;
-                                        const v = Math.random() * Math.PI;
-                                        const jitter = 0.1;
-
-                                        const x = 16 * Math.pow(Math.sin(u), 3);
-                                        const y = 13 * Math.cos(u) - 5 * Math.cos(2*u) - 2 * Math.cos(3*u) - Math.cos(4*u);
-                                        const z = 8 * Math.sin(v);
-
-                                        const rx = (Math.random() - 0.5) * jitter;
-                                        const ry = (Math.random() - 0.5) * jitter;
-                                        const rz = (Math.random() - 0.5) * jitter;
-
-                                        frameData[i*3] = (x * 0.04 + rx) * (1 + 0.1 * Math.sin(t + u));
-                                        frameData[i*3 + 1] = (y * 0.04 + ry) * (1 + 0.1 * Math.sin(t + v));
-                                        frameData[i*3 + 2] = (z * 0.04 + rz) * (1 + 0.1 * Math.cos(t + u));
-                                    }
-
-                                    frames.push(frameData);
-                                }
-
-                                return frames;
-                            })(),
-                            colors: (() => {
-                                const colors = new Float32Array(n * 3);
-                                for (let i = 0; i < n; i++) {
-                                    const y = i / n;
-                                    colors[i*3] = 1.0;
-                                    colors[i*3 + 1] = 0.2 + y * 0.3;
-                                    colors[i*3 + 2] = 0.4 + y * 0.4;
-                                }
-                                return colors;
-                            })()
-                        });
-                    }"""),
+                    "onChange": js(
+                        """(e) => $state.update({num_particles: parseInt(e.target.value)})"""
+                    ),
                 },
             ],
             js("$state.num_particles"),
@@ -182,19 +138,38 @@ from genstudio.plot import js
             ],
             js("$state.alpha"),
         ],
+        # Point size control
+        [
+            "label.flex.items-center.gap-2",
+            "Point Size: ",
+            [
+                "input",
+                {
+                    "type": "range",
+                    "min": 0.00015,
+                    "max": 0.02,
+                    "step": 0.00001,
+                    "value": js("$state.point_size"),
+                    "onChange": js(
+                        "(e) => $state.update({point_size: parseFloat(e.target.value)})"
+                    ),
+                },
+            ],
+            js("$state.point_size"),
+        ],
     ]
     | Scene3D.PointCloud(
         # Use pre-generated frames based on animation state
-        positions=js("$state.frames[$state.frame % 30]"),
-        colors=js("$state.colors"),
-        size=0.01,
+        positions=js("$state.frames[$state.frame % 30].slice(0, $state.num_particles)"),
+        colors=js("$state.colors.slice(0, $state.num_particles)"),
+        size=js("$state.point_size"),
         alpha=js("$state.alpha"),
     )
     + {
         "defaultCamera": {
-            "position": [2, 2, 2],
-            "target": [0, 0, 0],
-            "up": [0, 0, 1],
+            "position": [0.1, 0.1, 2],  # Adjusted position to view the heart head-on
+            "target": [0, 0, 0],  # Keeping the target at the center
+            "up": [0, 1, 0],  # Adjusted up vector for correct orientation
             "fov": 45,
             "near": 0.1,
             "far": 100,
