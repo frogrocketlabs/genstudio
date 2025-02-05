@@ -197,7 +197,8 @@ export interface RenderObject {
     stride: number;
     offset: number;
     lastCameraPosition?: [number, number, number];
-    sortedIndices?: Uint32Array;  // Created/resized during sorting when needed
+    sortedIndices?: Uint32Array;
+    distances?: Float32Array;
   };
 
   componentOffsets: ComponentOffset[];  // Add this field
@@ -1547,6 +1548,7 @@ export function SceneInner({
     pipelineCache: Map<string, PipelineCacheEntry>;
     dynamicBuffers: DynamicBuffers | null;
     resources: GeometryResources;
+    renderedComponents?: ComponentConfig[];
   } | null>(null);
 
   const [isReady, setIsReady] = useState(false);
@@ -2146,10 +2148,11 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
       const count = ro.lastRenderCount;
       if (!ro.transparencyInfo.sortedIndices || ro.transparencyInfo.sortedIndices.length !== count) {
         ro.transparencyInfo.sortedIndices = new Uint32Array(count);
+        ro.transparencyInfo.distances = new Float32Array(count);
       }
 
       // Get sorted indices and store them
-      getSortedIndices(ro.transparencyInfo.centers, cameraPos, ro.transparencyInfo.sortedIndices);
+      getSortedIndices(cameraPos, ro.transparencyInfo.centers, ro.transparencyInfo.sortedIndices, ro.transparencyInfo.distances!);
 
       // Update buffer with sorted data
       const component = components[ro.componentIndex];
@@ -2641,21 +2644,16 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
     }
 }, [containerWidth, containerHeight, createOrUpdateDepthTexture, createOrUpdatePickTextures, renderFrame]);
 
-  // Update components effect
+  // Render when camera or components change
   useEffect(() => {
     if (isReady && gpuRef.current) {
-      const ros = buildRenderObjects(components);
-      gpuRef.current.renderObjects = ros;
+      if (gpuRef.current.renderedComponents !== components) {
+        gpuRef.current.renderObjects = buildRenderObjects(components);
+        gpuRef.current.renderedComponents = components;
+      }
       renderFrame(activeCamera);
     }
-  }, [isReady, components]);
-
-  // Add separate effect just for camera updates
-  useEffect(() => {
-    if (isReady && gpuRef.current) {
-      renderFrame(activeCamera);
-    }
-  }, [isReady, activeCamera]);
+  }, [isReady, components, activeCamera]);
 
   // Wheel handling
   useEffect(() => {
@@ -2713,16 +2711,14 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
 }
 
 // Add this helper function at the top of the file
-function getSortedIndices(centers: Float32Array, cameraPos: [number, number, number], target: Uint32Array): void {
-  const count = centers.length / 3;
+function getSortedIndices(cameraPos: [number, number, number], centers: Float32Array, target: Uint32Array, distances: Float32Array): void {
+  const count = target.length;
 
   // Initialize indices
   for (let i = 0; i < count; i++) {
     target[i] = i;
   }
 
-  // Calculate distances
-  const distances = new Float32Array(count);
   for (let i = 0; i < count; i++) {
     const dx = centers[i*3+0] - cameraPos[0];
     const dy = centers[i*3+1] - cameraPos[1];

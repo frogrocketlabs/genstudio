@@ -212,6 +212,7 @@ def create_animated_clusters_scene(
             alphas=js("$state.alphas[$state.frame]"),
             radii=js("$state.radii[$state.frame]"),
         )
+        + {"controls": ["fps"]}
         | Plot.Slider("frame", 0, range=n_frames, fps="raf")
         | Plot.initialState(
             {
