@@ -191,16 +191,15 @@ export interface RenderObject {
   cachedPickingData: Float32Array;  // Make non-optional since all components must have picking data
   lastRenderCount: number;          // Make non-optional since we always need to track this
 
-  transparencyInfo?: {
-    needsSort: boolean;
-    centers: Float32Array;
-    stride: number;
-    offset: number;
-    lastCameraPosition?: [number, number, number];
-    sortedIndices?: Uint32Array;
-    distances?: Float32Array;
-    lastSortedFrame?: number;  // Replace wasSorted with lastSortedFrame
-  };
+  // Flattened transparency properties
+  needsSort?: boolean;
+  centers?: Float32Array;
+  centerStride?: number;
+  centerOffset?: number;
+  lastCameraPosition?: [number, number, number];
+  sortedIndices?: Uint32Array;
+  distances?: Float32Array;
+  lastSortedFrame?: number;
 
   componentOffsets: ComponentOffset[];  // Add this field
 
@@ -270,6 +269,13 @@ interface PrimitiveSpec<E> {
    * Returns the number of floats needed per instance for picking data.
    */
   getFloatsPerPicking(): number;
+
+  /**
+   * Returns the centers of all instances in this component.
+   * Used for transparency sorting and distance calculations.
+   * @returns Object containing centers array and stride, or undefined if not applicable
+   */
+  getCenters(component: E): { centers: Float32Array, stride: number, offset: number } | undefined;
 
   /**
    * Builds vertex buffer data for rendering.
@@ -405,6 +411,14 @@ const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
 
   getFloatsPerPicking() {
     return 5;  // position(3) + size(1) + pickID(1)
+  },
+
+  getCenters(elem) {
+    return {
+      centers: elem.positions,
+      stride: 3,
+      offset: 0
+    };
   },
 
   buildRenderData(elem, target, sortedIndices?: Uint32Array) {
@@ -593,6 +607,14 @@ const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
     return 7;  // position(3) + size(3) + pickID(1)
   },
 
+  getCenters(elem) {
+    return {
+      centers: elem.centers,
+      stride: 3,
+      offset: 0
+    };
+  },
+
   buildRenderData(elem, target, sortedIndices?: Uint32Array) {
     const count = elem.centers.length / 3;
     if(count === 0) return false;
@@ -763,6 +785,14 @@ const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
 
   getFloatsPerPicking() {
     return 7;  // position(3) + size(3) + pickID(1)
+  },
+
+  getCenters(elem) {
+    return {
+      centers: elem.centers,
+      stride: 3,
+      offset: 0
+    };
   },
 
   buildRenderData(elem, target, sortedIndices?: Uint32Array) {
@@ -945,6 +975,13 @@ const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
   getFloatsPerPicking() {
     return 7;  // position(3) + size(3) + pickID(1)
   },
+  getCenters(elem) {
+    return {
+      centers: elem.centers,
+      stride: 3,
+      offset: 0
+    };
+  },
   buildRenderData(elem, target, sortedIndices?: Uint32Array) {
     const count = elem.centers.length / 3;
     if(count === 0) return false;
@@ -1122,6 +1159,29 @@ const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
     return countSegments(elem.positions);
   },
 
+  getCenters(elem) {
+    const segCount = this.getCount(elem);
+        const centers = new Float32Array(segCount * 3);
+        let segIndex = 0;
+        const pointCount = elem.positions.length / 4;
+
+        for(let p = 0; p < pointCount - 1; p++) {
+          const iCurr = elem.positions[p * 4 + 3];
+          const iNext = elem.positions[(p+1) * 4 + 3];
+          if(iCurr !== iNext) continue;
+
+          centers[segIndex*3+0] = (elem.positions[p*4+0] + elem.positions[(p+1)*4+0]) * 0.5;
+          centers[segIndex*3+1] = (elem.positions[p*4+1] + elem.positions[(p+1)*4+1]) * 0.5;
+          centers[segIndex*3+2] = (elem.positions[p*4+2] + elem.positions[(p+1)*4+2]) * 0.5;
+          segIndex++;
+        }
+        return {
+          centers,
+          stride: 3,
+          offset: 0
+        }
+  },
+
   getFloatsPerInstance() {
     return 11;
   },
@@ -1139,9 +1199,9 @@ const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
 
     // First pass: build segment mapping
     const segmentMap = new Array(segCount);
-      let segIndex = 0;
+    let segIndex = 0;
 
-      const pointCount = elem.positions.length / 4;
+    const pointCount = elem.positions.length / 4;
       for(let p = 0; p < pointCount - 1; p++) {
         const iCurr = elem.positions[p * 4 + 3];
         const iNext = elem.positions[(p+1) * 4 + 3];
@@ -1541,7 +1601,7 @@ const ensurePickingData = (device: GPUDevice, components: ComponentConfig[], ren
   if (!spec) return;
 
   // Get sorted indices if we have transparency
-  const sortedIndices = renderObject.transparencyInfo?.sortedIndices;
+  const sortedIndices = renderObject.sortedIndices;
 
   // Build picking data for each component in this render object
   let pickingDataOffset = 0;
@@ -1871,60 +1931,7 @@ export function SceneInner({
   }
 
   // Replace getTransparencyInfo function
-  function getTransparencyInfo(component: ComponentConfig, spec: PrimitiveSpec<any>): RenderObject['transparencyInfo'] | undefined {
-    const count = spec.getCount(component);
-    if (count === 0) return undefined;
 
-    const defaults = getBaseDefaults(component);
-    const { alphas } = getColumnarParams(component, count);
-    const needsSort = hasTransparency(alphas, defaults.alpha, component.decorations);
-    if (!needsSort) return undefined;
-
-    // Extract centers based on component type
-    switch (component.type) {
-      case 'PointCloud':
-        return {
-          needsSort,
-          centers: component.positions,
-          stride: 3,
-          offset: 0
-        };
-      case 'Ellipsoid':
-      case 'Cuboid':
-        return {
-          needsSort,
-          centers: component.centers,
-          stride: 3,
-          offset: 0
-        };
-      case 'LineBeams': {
-        // Compute centers for line segments
-        const segCount = spec.getCount(component);
-        const centers = new Float32Array(segCount * 3);
-        let segIndex = 0;
-        const pointCount = component.positions.length / 4;
-
-        for(let p = 0; p < pointCount - 1; p++) {
-          const iCurr = component.positions[p * 4 + 3];
-          const iNext = component.positions[(p+1) * 4 + 3];
-          if(iCurr !== iNext) continue;
-
-          centers[segIndex*3+0] = (component.positions[p*4+0] + component.positions[(p+1)*4+0]) * 0.5;
-          centers[segIndex*3+1] = (component.positions[p*4+1] + component.positions[(p+1)*4+1]) * 0.5;
-          centers[segIndex*3+2] = (component.positions[p*4+2] + component.positions[(p+1)*4+2]) * 0.5;
-          segIndex++;
-        }
-        return {
-          needsSort,
-          centers,
-          stride: 3,
-          offset: 0
-        };
-      }
-      default:
-        return undefined;
-    }
-  }
 
   // Update buildRenderObjects to include caching
   function buildRenderObjects(components: ComponentConfig[]): RenderObject[] {
@@ -2188,9 +2195,12 @@ export function SceneInner({
           renderObject.cachedPickingData.byteLength
         );
 
-        // Update transparency info
+        // Update transparency properties
         const component = components[info.indices[0]];
-        renderObject.transparencyInfo = getTransparencyInfo(component, spec);
+        const transparencyProps = getTransparencyProperties(component, spec);
+        if (transparencyProps) {
+          Object.assign(renderObject, transparencyProps);
+        }
 
         validRenderObjects.push(renderObject);
 
@@ -2249,10 +2259,10 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
 
     // First pass: Sort all objects that need it
     renderObjects.forEach(function sortAllObjects(ro) {
-      if (!ro.transparencyInfo?.needsSort) return;
+      if (!ro.needsSort) return;
 
       // Check if camera has moved enough to require resorting
-      const lastPos = ro.transparencyInfo.lastCameraPosition;
+      const lastPos = ro.lastCameraPosition;
       if (lastPos) {
         const dx = cameraPos[0] - lastPos[0];
         const dy = cameraPos[1] - lastPos[1];
@@ -2263,28 +2273,31 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
 
       // Get or create sorted indices array
       const count = ro.lastRenderCount;
-      if (!ro.transparencyInfo.sortedIndices || ro.transparencyInfo.sortedIndices.length !== count) {
-        ro.transparencyInfo.sortedIndices = new Uint32Array(count);
-        ro.transparencyInfo.distances = new Float32Array(count);
+      if (!ro.sortedIndices || ro.sortedIndices.length !== count) {
+        ro.sortedIndices = new Uint32Array(count);
+        ro.distances = new Float32Array(count);
       }
 
       // Get sorted indices and store them
-      getSortedIndices(cameraPos, ro.transparencyInfo.centers, ro.transparencyInfo.sortedIndices, ro.transparencyInfo.distances!);
+      if (ro.centers && ro.centerStride !== undefined) {
+        getSortedIndices(cameraPos, ro.centers, ro.sortedIndices, ro.distances!);
+      }
 
       // Mark frame when sorting occurred
-      ro.transparencyInfo.lastSortedFrame = currentFrame;
-      ro.transparencyInfo.lastCameraPosition = cameraPos;
+      ro.lastSortedFrame = currentFrame;
+      ro.lastCameraPosition = cameraPos;
     });
+
     // Second pass: Update buffers for all objects that were sorted
     renderObjects.forEach(function updateSortedBuffers(ro) {
-      if (!ro.transparencyInfo?.needsSort || ro.transparencyInfo.lastSortedFrame !== currentFrame) return;
+      if (!ro.needsSort || ro.lastSortedFrame !== currentFrame) return;
 
       const component = components[ro.componentIndex];
       const spec = primitiveRegistry[component.type];
       if (!spec || !gpuRef.current) return;
 
       // Rebuild render data with new sorting
-      spec.buildRenderData(component, ro.cachedRenderData, ro.transparencyInfo.sortedIndices);
+      spec.buildRenderData(component, ro.cachedRenderData, ro.sortedIndices);
       ro.pickingDataStale = true;
 
       // Write render data to GPU buffer
@@ -2296,7 +2309,6 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
         ro.cachedRenderData.byteOffset,
         ro.cachedRenderData.byteLength
       );
-
     });
 
     // Update camera uniforms
@@ -2819,4 +2831,25 @@ function hasTransparency(alphas: Float32Array | null, defaultAlpha: number, deco
     return alphas !== null ||
            defaultAlpha !== 1.0 ||
            (decorations?.some(d => d.alpha  !== undefined && d.alpha !== 1.0 && d.indexes?.length > 0) ?? false);
+}
+
+// Simplify getTransparencyProperties using getCenters
+function getTransparencyProperties(component: ComponentConfig, spec: PrimitiveSpec<any>): Pick<RenderObject, 'needsSort' | 'centers' | 'centerStride' | 'centerOffset'> | undefined {
+  const count = spec.getCount(component);
+  if (count === 0) return undefined;
+
+  const defaults = getBaseDefaults(component);
+  const { alphas } = getColumnarParams(component, count);
+  const needsSort = hasTransparency(alphas, defaults.alpha, component.decorations);
+  if (!needsSort) return undefined;
+
+  const centerInfo = spec.getCenters(component);
+  if (!centerInfo) return undefined;
+
+  return {
+    needsSort,
+    centers: centerInfo.centers,
+    centerStride: centerInfo.stride,
+    centerOffset: centerInfo.offset
+  };
 }
