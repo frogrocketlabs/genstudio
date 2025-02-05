@@ -196,7 +196,6 @@ export interface RenderObject {
   centers?: Float32Array;
   centerStride?: number;
   centerOffset?: number;
-  lastCameraPosition?: [number, number, number];
   sortedIndices?: Uint32Array;
   distances?: Float32Array;
   lastSortedFrame?: number;
@@ -1632,6 +1631,143 @@ const ensurePickingData = (device: GPUDevice, components: ComponentConfig[], ren
   renderObject.pickingDataStale = false;
 };
 
+function computeUniforms(containerWidth: number, containerHeight: number, camState: CameraState): {
+  aspect: number,
+  view: glMatrix.mat4,
+  proj: glMatrix.mat4,
+  mvp: glMatrix.mat4,
+  forward: glMatrix.vec3,
+  right: glMatrix.vec3,
+  camUp: glMatrix.vec3,
+  lightDir: glMatrix.vec3
+} {
+    // Update camera uniforms
+    const aspect = containerWidth / containerHeight;
+    const view = glMatrix.mat4.lookAt(
+      glMatrix.mat4.create(),
+      camState.position,
+      camState.target,
+      camState.up
+    );
+
+    const proj = glMatrix.mat4.perspective(
+      glMatrix.mat4.create(),
+      glMatrix.glMatrix.toRadian(camState.fov),
+      aspect,
+      camState.near,
+      camState.far
+    );
+
+    // Compute MVP matrix
+    const mvp = glMatrix.mat4.multiply(
+      glMatrix.mat4.create(),
+      proj,
+      view
+    );
+
+    // Compute camera vectors for lighting
+    const forward = glMatrix.vec3.sub(glMatrix.vec3.create(), camState.target, camState.position);
+    const right = glMatrix.vec3.cross(glMatrix.vec3.create(), forward, camState.up);
+    glMatrix.vec3.normalize(right, right);
+
+    const camUp = glMatrix.vec3.cross(glMatrix.vec3.create(), right, forward);
+    glMatrix.vec3.normalize(camUp, camUp);
+    glMatrix.vec3.normalize(forward, forward);
+
+    // Compute light direction in camera space
+    const lightDir = glMatrix.vec3.create();
+    glMatrix.vec3.scaleAndAdd(lightDir, lightDir, right, LIGHTING.DIRECTION.RIGHT);
+    glMatrix.vec3.scaleAndAdd(lightDir, lightDir, camUp, LIGHTING.DIRECTION.UP);
+    glMatrix.vec3.scaleAndAdd(lightDir, lightDir, forward, LIGHTING.DIRECTION.FORWARD);
+    glMatrix.vec3.normalize(lightDir, lightDir);
+
+    return {aspect, view, proj, mvp, forward, right, camUp, lightDir}
+}
+
+function renderPass({
+  device,
+  context,
+  depthTexture,
+  renderObjects,
+  uniformBindGroup
+}: {
+  device: GPUDevice;
+  context: GPUCanvasContext;
+  depthTexture: GPUTexture | null;
+  renderObjects: RenderObject[];
+  uniformBindGroup: GPUBindGroup;
+}) {
+
+  function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject, 'pipeline' | 'vertexBuffers' | 'instanceCount'>> & {
+  vertexBuffers: [GPUBuffer, BufferInfo];
+} & RenderObject {
+  return (
+    ro.pipeline !== undefined &&
+    Array.isArray(ro.vertexBuffers) &&
+    ro.vertexBuffers.length === 2 &&
+    ro.vertexBuffers[0] !== undefined &&
+    ro.vertexBuffers[1] !== undefined &&
+    'buffer' in ro.vertexBuffers[1] &&
+    'offset' in ro.vertexBuffers[1] &&
+    (ro.indexBuffer !== undefined || ro.vertexCount !== undefined) &&
+    typeof ro.instanceCount === 'number' &&
+    ro.instanceCount > 0
+  );
+}
+
+  // Begin render pass
+  const cmd = device.createCommandEncoder();
+  const pass = cmd.beginRenderPass({
+    colorAttachments: [{
+      view: context.getCurrentTexture().createView(),
+      clearValue: { r: 0, g: 0, b: 0, a: 1 },
+      loadOp: 'clear',
+      storeOp: 'store'
+    }],
+    depthStencilAttachment: depthTexture ? {
+      view: depthTexture.createView(),
+      depthClearValue: 1.0,
+      depthLoadOp: 'clear',
+      depthStoreOp: 'store'
+    } : undefined
+  });
+
+  // Draw each object
+  for(const ro of renderObjects) {
+    if (!isValidRenderObject(ro)) {
+      continue;
+    }
+
+    pass.setPipeline(ro.pipeline);
+    pass.setBindGroup(0, uniformBindGroup);
+    pass.setVertexBuffer(0, ro.vertexBuffers[0]);
+    const instanceInfo = ro.vertexBuffers[1];
+    pass.setVertexBuffer(1, instanceInfo.buffer, instanceInfo.offset);
+    if(ro.indexBuffer) {
+      pass.setIndexBuffer(ro.indexBuffer, 'uint16');
+      pass.drawIndexed(ro.indexCount ?? 0, ro.instanceCount ?? 1);
+    } else {
+      pass.draw(ro.vertexCount ?? 0, ro.instanceCount ?? 1);
+    }
+  }
+
+  pass.end();
+  device.queue.submit([cmd.finish()]);
+
+
+}
+
+function computeUniformData(containerWidth: number, containerHeight: number, camState: CameraState): Float32Array {
+  const {mvp, right, camUp, lightDir} = computeUniforms(containerWidth, containerHeight, camState)
+  return new Float32Array([
+    ...Array.from(mvp),
+    right[0], right[1], right[2], 0,  // pad to vec4
+    camUp[0], camUp[1], camUp[2], 0,  // pad to vec4
+    lightDir[0], lightDir[1], lightDir[2], 0,  // pad to vec4
+    camState.position[0], camState.position[1], camState.position[2], 0  // Add camera position
+  ]);
+}
+
 export function SceneInner({
   components,
   containerWidth,
@@ -1655,9 +1791,9 @@ export function SceneInner({
     pickTexture: GPUTexture | null;
     pickDepthTexture: GPUTexture | null;
     readbackBuffer: GPUBuffer;
+    lastCameraPosition?: glMatrix.vec3;
 
     renderObjects: RenderObject[];
-    componentBaseId: number[];
     pipelineCache: Map<string, PipelineCacheEntry>;
     dynamicBuffers: DynamicBuffers | null;
     resources: GeometryResources;
@@ -1760,7 +1896,6 @@ export function SceneInner({
         pickDepthTexture: null,
         readbackBuffer,
         renderObjects: [],
-        componentBaseId: [],
         pipelineCache: new Map(),
         dynamicBuffers: null,
         resources: {
@@ -1800,7 +1935,7 @@ export function SceneInner({
         usage: GPUTextureUsage.RENDER_ATTACHMENT
     });
     gpuRef.current.depthTexture = dt;
-}, []);
+    }, []);
 
   const createOrUpdatePickTextures = useCallback(() => {
     if(!gpuRef.current || !canvasRef.current) return;
@@ -1831,22 +1966,6 @@ export function SceneInner({
   /******************************************************
    * C) Building the RenderObjects (no if/else)
    ******************************************************/
-  // Move ID mapping logic to a separate function
-  function buildComponentIdMapping(components: ComponentConfig[]) {
-    if (!gpuRef.current) return;
-
-    // We only need componentBaseId for offset calculations now
-    components.forEach((elem, componentIdx) => {
-      const spec = primitiveRegistry[elem.type];
-      if (!spec) {
-        gpuRef.current!.componentBaseId[componentIdx] = 0;
-        return;
-      }
-
-      // Store the base ID for this component
-      gpuRef.current!.componentBaseId[componentIdx] = componentIdx;
-    });
-  }
 
   // Add this type definition at the top of the file
   type ComponentType = ComponentConfig['type'];
@@ -1908,31 +2027,6 @@ export function SceneInner({
     return typeArrays;
   }
 
-  // Create dynamic buffers helper
-  function createDynamicBuffers(device: GPUDevice, renderSize: number, pickingSize: number) {
-    const renderBuffer = device.createBuffer({
-      size: renderSize,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-      mappedAtCreation: false
-    });
-
-    const pickingBuffer = device.createBuffer({
-      size: pickingSize,
-      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-      mappedAtCreation: false
-    });
-
-    return {
-      renderBuffer,
-      pickingBuffer,
-      renderOffset: 0,
-      pickingOffset: 0
-    };
-  }
-
-  // Replace getTransparencyInfo function
-
-
   // Update buildRenderObjects to include caching
   function buildRenderObjects(components: ComponentConfig[]): RenderObject[] {
     if(!gpuRef.current) return [];
@@ -1944,9 +2038,6 @@ export function SceneInner({
         delete renderObjectCache.current[type];
       }
     });
-
-    // Initialize componentBaseId array and build ID mapping
-    gpuRef.current.componentBaseId = new Array(components.length).fill(0);
 
     // Track global start index for all components
     let globalStartIndex = 0;
@@ -2000,15 +2091,28 @@ export function SceneInner({
     if (!gpuRef.current.dynamicBuffers ||
         gpuRef.current.dynamicBuffers.renderBuffer.size < totalRenderSize ||
         gpuRef.current.dynamicBuffers.pickingBuffer.size < totalPickingSize) {
-      if (gpuRef.current.dynamicBuffers) {
-        gpuRef.current.dynamicBuffers.renderBuffer.destroy();
-        gpuRef.current.dynamicBuffers.pickingBuffer.destroy();
-      }
-      gpuRef.current.dynamicBuffers = createDynamicBuffers(
-        device,
-        totalRenderSize,
-        totalPickingSize
-      );
+
+      gpuRef.current.dynamicBuffers?.renderBuffer.destroy();
+      gpuRef.current.dynamicBuffers?.pickingBuffer.destroy();
+
+      const renderBuffer = device.createBuffer({
+        size: totalRenderSize,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        mappedAtCreation: false
+      });
+
+      const pickingBuffer = device.createBuffer({
+        size: totalPickingSize,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        mappedAtCreation: false
+      });
+
+      gpuRef.current.dynamicBuffers = {
+        renderBuffer,
+        pickingBuffer,
+        renderOffset: 0,
+        pickingOffset: 0
+      };
     }
     const dynamicBuffers = gpuRef.current.dynamicBuffers!;
 
@@ -2096,15 +2200,6 @@ export function SceneInner({
           // Create picking array sized for all instances
           const pickingData = new Float32Array(totalInstanceCount * spec.getFloatsPerPicking());
 
-          // Write combined render data to buffer
-          device.queue.writeBuffer(
-            dynamicBuffers.renderBuffer,
-            renderOffset,
-            renderData.buffer,
-            renderData.byteOffset,
-            renderData.byteLength
-          );
-
           renderObject = {
             pipeline,
             pickingPipeline,
@@ -2172,28 +2267,10 @@ export function SceneInner({
             renderDataOffset += componentCount * floatsPerInstance;
           });
 
-          // Write updated render data to buffer
-          device.queue.writeBuffer(
-            dynamicBuffers.renderBuffer,
-            renderOffset,
-            renderObject.cachedRenderData.buffer,
-            renderObject.cachedRenderData.byteOffset,
-            renderObject.cachedRenderData.byteLength
-          );
-
           renderObject.componentOffsets = typeComponentOffsets;
           renderObject.spec = spec;
 
         }
-
-        // Write picking data to buffer
-        device.queue.writeBuffer(
-          dynamicBuffers.pickingBuffer,
-          pickingOffset,
-          renderObject.cachedPickingData.buffer,
-          renderObject.cachedPickingData.byteOffset,
-          renderObject.cachedPickingData.byteLength
-        );
 
         // Update transparency properties
         const component = components[info.indices[0]];
@@ -2220,56 +2297,45 @@ export function SceneInner({
    * D) Render pass (single call, no loop)
    ******************************************************/
 
-  // Add validation helper
-function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject, 'pipeline' | 'vertexBuffers' | 'instanceCount'>> & {
-  vertexBuffers: [GPUBuffer, BufferInfo];
-} & RenderObject {
-  return (
-    ro.pipeline !== undefined &&
-    Array.isArray(ro.vertexBuffers) &&
-    ro.vertexBuffers.length === 2 &&
-    ro.vertexBuffers[0] !== undefined &&
-    ro.vertexBuffers[1] !== undefined &&
-    'buffer' in ro.vertexBuffers[1] &&
-    'offset' in ro.vertexBuffers[1] &&
-    (ro.indexBuffer !== undefined || ro.vertexCount !== undefined) &&
-    typeof ro.instanceCount === 'number' &&
-    ro.instanceCount > 0
-  );
-}
 
   // Update renderFrame to handle transparency sorting
-  const renderFrame = useCallback(function renderFrameInner(camState: CameraState) {
+  const renderFrame = useCallback(function renderFrameInner(camState: CameraState, components?: ComponentConfig[]) {
     if(!gpuRef.current) return;
+
+    components = components || gpuRef.current.renderedComponents
+
+    const componentsChanged = gpuRef.current.renderedComponents !== components;
+
+
+    if (componentsChanged) {
+      gpuRef.current.renderObjects = buildRenderObjects(components!);
+      gpuRef.current.renderedComponents = components;
+    }
+
     const {
       device, context, uniformBuffer, uniformBindGroup,
       renderObjects, depthTexture
     } = gpuRef.current;
 
+    let cameraMoved = false;
+    const lastPos = gpuRef.current.lastCameraPosition;
+      if (lastPos) {
+        const dx = camState.position[0] - lastPos[0];
+        const dy = camState.position[1] - lastPos[1];
+        const dz = camState.position[2] - lastPos[2];
+        const moveDistSq = dx*dx + dy*dy + dz*dz;
+        cameraMoved = moveDistSq > 0.0001
+      }
+    gpuRef.current.lastCameraPosition = camState.position;
+
     // Increment frame counter
     gpuRef.current.frameCount = (gpuRef.current.frameCount || 0) + 1;
     const currentFrame = gpuRef.current.frameCount;
 
-    // Update transparency sorting if needed
-    const cameraPos: [number, number, number] = [
-      camState.position[0],
-      camState.position[1],
-      camState.position[2]
-    ];
-
     // First pass: Sort all objects that need it
     renderObjects.forEach(function sortAllObjects(ro) {
       if (!ro.needsSort) return;
-
-      // Check if camera has moved enough to require resorting
-      const lastPos = ro.lastCameraPosition;
-      if (lastPos) {
-        const dx = cameraPos[0] - lastPos[0];
-        const dy = cameraPos[1] - lastPos[1];
-        const dz = cameraPos[2] - lastPos[2];
-        const moveDistSq = dx*dx + dy*dy + dz*dz;
-        if (moveDistSq < 0.0001) return; // Skip if camera hasn't moved much
-      }
+      if (!componentsChanged && !cameraMoved) return;
 
       // Get or create sorted indices array
       const count = ro.lastRenderCount;
@@ -2278,21 +2344,11 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
         ro.distances = new Float32Array(count);
       }
 
-      // Get sorted indices and store them
       if (ro.centers && ro.centerStride !== undefined) {
-        getSortedIndices(cameraPos, ro.centers, ro.sortedIndices, ro.distances!);
+        getSortedIndices(camState.position, ro.centers, ro.sortedIndices, ro.distances!);
       }
 
-      // Mark frame when sorting occurred
-      ro.lastSortedFrame = currentFrame;
-      ro.lastCameraPosition = cameraPos;
-    });
-
-    // Second pass: Update buffers for all objects that were sorted
-    renderObjects.forEach(function updateSortedBuffers(ro) {
-      if (!ro.needsSort || ro.lastSortedFrame === currentFrame) return;
-
-      const component = components[ro.componentIndex];
+      const component = components![ro.componentIndex];
       const spec = primitiveRegistry[component.type];
       if (!spec || !gpuRef.current) return;
 
@@ -2311,99 +2367,14 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
       );
     });
 
-    // Update camera uniforms
-    const aspect = containerWidth / containerHeight;
-    const view = glMatrix.mat4.lookAt(
-      glMatrix.mat4.create(),
-      camState.position,
-      camState.target,
-      camState.up
-    );
-
-    const proj = glMatrix.mat4.perspective(
-      glMatrix.mat4.create(),
-      glMatrix.glMatrix.toRadian(camState.fov),
-      aspect,
-      camState.near,
-      camState.far
-    );
-
-    // Compute MVP matrix
-    const mvp = glMatrix.mat4.multiply(
-      glMatrix.mat4.create(),
-      proj,
-      view
-    );
-
-    // Compute camera vectors for lighting
-    const forward = glMatrix.vec3.sub(glMatrix.vec3.create(), camState.target, camState.position);
-    const right = glMatrix.vec3.cross(glMatrix.vec3.create(), forward, camState.up);
-    glMatrix.vec3.normalize(right, right);
-
-    const camUp = glMatrix.vec3.cross(glMatrix.vec3.create(), right, forward);
-    glMatrix.vec3.normalize(camUp, camUp);
-    glMatrix.vec3.normalize(forward, forward);
-
-    // Compute light direction in camera space
-    const lightDir = glMatrix.vec3.create();
-    glMatrix.vec3.scaleAndAdd(lightDir, lightDir, right, LIGHTING.DIRECTION.RIGHT);
-    glMatrix.vec3.scaleAndAdd(lightDir, lightDir, camUp, LIGHTING.DIRECTION.UP);
-    glMatrix.vec3.scaleAndAdd(lightDir, lightDir, forward, LIGHTING.DIRECTION.FORWARD);
-    glMatrix.vec3.normalize(lightDir, lightDir);
-
-    // Write uniforms
-    const uniformData = new Float32Array([
-      ...Array.from(mvp),
-      right[0], right[1], right[2], 0,  // pad to vec4
-      camUp[0], camUp[1], camUp[2], 0,  // pad to vec4
-      lightDir[0], lightDir[1], lightDir[2], 0,  // pad to vec4
-      camState.position[0], camState.position[1], camState.position[2], 0  // Add camera position
-    ]);
+    const uniformData = computeUniformData(containerWidth, containerHeight, camState);
     device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
-    // Begin render pass
-    const cmd = device.createCommandEncoder();
-    const pass = cmd.beginRenderPass({
-      colorAttachments: [{
-        view: context.getCurrentTexture().createView(),
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-        loadOp: 'clear',
-        storeOp: 'store'
-      }],
-      depthStencilAttachment: depthTexture ? {
-        view: depthTexture.createView(),
-        depthClearValue: 1.0,
-        depthLoadOp: 'clear',
-        depthStoreOp: 'store'
-      } : undefined
-    });
+    renderPass({device, context, depthTexture, renderObjects, uniformBindGroup})
 
-    // Draw each object
-    for(const ro of renderObjects) {
-      if (!isValidRenderObject(ro)) {
-        continue;
-      }
-
-      pass.setPipeline(ro.pipeline);
-      pass.setBindGroup(0, uniformBindGroup);
-
-      pass.setVertexBuffer(0, ro.vertexBuffers[0]);
-
-      const instanceInfo = ro.vertexBuffers[1];
-      pass.setVertexBuffer(1, instanceInfo.buffer, instanceInfo.offset);
-
-      if(ro.indexBuffer) {
-        pass.setIndexBuffer(ro.indexBuffer, 'uint16');
-        pass.drawIndexed(ro.indexCount ?? 0, ro.instanceCount ?? 1);
-      } else {
-        pass.draw(ro.vertexCount ?? 0, ro.instanceCount ?? 1);
-      }
-    }
-
-    pass.end();
-    device.queue.submit([cmd.finish()]);
     onFrameRendered?.(performance.now());
   }, [containerWidth, containerHeight, onFrameRendered, components]);
+
 
   /******************************************************
    * E) Pick pass (on hover/click)
@@ -2424,7 +2395,7 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
 
       // Ensure picking data is ready for all objects
       for (let i = 0; i < renderObjects.length; i++) {
-        ensurePickingData(gpuRef.current.device, gpuRef.current.renderedComponents, renderObjects[i]);
+        ensurePickingData(gpuRef.current.device, gpuRef.current.renderedComponents!, renderObjects[i]);
       }
 
       // Convert screen coordinates to device pixels
@@ -2772,11 +2743,7 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
   // Render when camera or components change
   useEffect(() => {
     if (isReady && gpuRef.current) {
-      if (gpuRef.current.renderedComponents !== components) {
-        gpuRef.current.renderObjects = buildRenderObjects(components);
-        gpuRef.current.renderedComponents = components;
-      }
-      renderFrame(activeCamera);
+      renderFrame(activeCamera, components);
     }
   }, [isReady, components, activeCamera]);
 
@@ -2808,7 +2775,7 @@ function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject
 }
 
 // Add this helper function at the top of the file
-function getSortedIndices(cameraPos: [number, number, number], centers: Float32Array, target: Uint32Array, distances: Float32Array): void {
+function getSortedIndices(cameraPos: glMatrix.vec3, centers: Float32Array, target: Uint32Array, distances: Float32Array): void {
   const count = target.length;
 
   // Initialize indices
@@ -2833,6 +2800,14 @@ function hasTransparency(alphas: Float32Array | null, defaultAlpha: number, deco
            (decorations?.some(d => d.alpha  !== undefined && d.alpha !== 1.0 && d.indexes?.length > 0) ?? false);
 }
 
+function componentHasAlpha(component: ComponentConfig) {
+  return (
+    (component.alphas && component.alphas?.length > 0)
+    || (component.alpha && component.alpha !== 1.0)
+    || component.decorations?.some(d => (d.alpha !== undefined && d.alpha !== 1.0 && d.indexes?.length > 0))
+  )
+}
+
 // Simplify getTransparencyProperties using getCenters
 function getTransparencyProperties(component: ComponentConfig, spec: PrimitiveSpec<any>): Pick<RenderObject, 'needsSort' | 'centers' | 'centerStride' | 'centerOffset'> | undefined {
   const count = spec.getCount(component);
@@ -2845,7 +2820,6 @@ function getTransparencyProperties(component: ComponentConfig, spec: PrimitiveSp
 
   const centerInfo = spec.getCenters(component);
   if (!centerInfo) return undefined;
-
   return {
     needsSort,
     centers: centerInfo.centers,
