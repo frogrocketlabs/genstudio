@@ -54,6 +54,15 @@ import {
   RING_PICKING_INSTANCE_LAYOUT
 } from './shaders';
 
+/**
+ * Aligns a size or offset to 16 bytes, which is a common requirement for WebGPU buffers.
+ * @param value The value to align
+ * @returns The value aligned to the next 16-byte boundary
+ */
+function align16(value: number): number {
+  return Math.ceil(value / 16) * 16;
+}
+
 interface ComponentOffset {
   componentIdx: number; // The index of the component in your overall component list.
   start: number;        // The first instance index in the combined buffer for this component.
@@ -191,12 +200,9 @@ export interface RenderObject {
   cachedPickingData: Float32Array;  // Make non-optional since all components must have picking data
   lastRenderCount: number;          // Make non-optional since we always need to track this
 
-  // Flattened transparency properties
-  needsSort?: boolean;
-  centers?: Float32Array;
+  // Temporary sorting state
   sortedIndices?: Uint32Array;
   distances?: Float32Array;
-  lastSortedFrame?: number;
 
   componentOffsets: ComponentOffset[];  // Add this field
 
@@ -2055,8 +2061,8 @@ export function SceneInner({
       // Calculate total size needed for all instances of this type
       const floatsPerInstance = spec.getFloatsPerInstance();
       const renderStride = Math.ceil(floatsPerInstance * 4);  // 4 bytes per float
-      totalRenderSize += Math.ceil((totalInstanceCount * renderStride) / 16) * 16;  // Align to 16 bytes
-      totalPickingSize += Math.ceil((totalInstanceCount * spec.getFloatsPerPicking() * 4) / 16) * 16;  // Align to 16 bytes
+      totalRenderSize += align16(totalInstanceCount * renderStride);
+      totalPickingSize += align16(totalInstanceCount * spec.getFloatsPerPicking() * 4);
     });
 
     // Create or recreate dynamic buffers if needed
@@ -2101,8 +2107,8 @@ export function SceneInner({
 
       try {
         // Ensure 4-byte alignment for all offsets
-        const renderOffset = Math.ceil(dynamicBuffers.renderOffset / 16) * 16;  // Use 16-byte alignment to be safe
-        const pickingOffset = Math.ceil(dynamicBuffers.pickingOffset / 16) * 16;
+        const renderOffset = align16(dynamicBuffers.renderOffset);
+        const pickingOffset = align16(dynamicBuffers.pickingOffset);
 
         // Calculate total size for this type's render and picking data
         const renderStride = Math.ceil(info.datas[0].length / info.counts[0]) * 4;
@@ -2110,7 +2116,7 @@ export function SceneInner({
 
         // Write render data to buffer with proper alignment
         info.datas.forEach((data: Float32Array, i: number) => {
-          const alignedOffset = renderOffset + Math.ceil(info.offsets[i] / 16) * 16;
+          const alignedOffset = renderOffset + align16(info.offsets[i]);
           device.queue.writeBuffer(
             dynamicBuffers.renderBuffer,
             alignedOffset,
@@ -2244,18 +2250,11 @@ export function SceneInner({
 
         }
 
-        // Update transparency properties
-        const component = components[info.indices[0]];
-        const transparencyProps = getTransparencyProperties(component, spec);
-        if (transparencyProps) {
-          Object.assign(renderObject, transparencyProps);
-        }
-
         validRenderObjects.push(renderObject);
 
         // Update buffer offsets ensuring alignment
-        dynamicBuffers.renderOffset = renderOffset + Math.ceil(info.totalSize / 16) * 16;
-        dynamicBuffers.pickingOffset = pickingOffset + Math.ceil((totalInstanceCount * spec.getFloatsPerPicking() * 4) / 16) * 16;
+        dynamicBuffers.renderOffset = renderOffset + align16(info.totalSize);
+        dynamicBuffers.pickingOffset = pickingOffset + align16(totalInstanceCount * spec.getFloatsPerPicking() * 4);
 
       } catch (error) {
         console.error(`Error creating render object for type ${type}:`, error);
@@ -2278,7 +2277,6 @@ export function SceneInner({
 
     const componentsChanged = gpuRef.current.renderedComponents !== components;
 
-
     if (componentsChanged) {
       gpuRef.current.renderObjects = buildRenderObjects(components!);
       gpuRef.current.renderedComponents = components;
@@ -2300,10 +2298,14 @@ export function SceneInner({
       }
     gpuRef.current.lastCameraPosition = camState.position;
 
-    // First pass: Sort all objects that need it
+    // First pass: Sort all objects that need transparency sorting
     renderObjects.forEach(function sortAllObjects(ro) {
-      if (!ro.needsSort) return;
+      const component = components![ro.componentIndex];
+      if (!componentHasAlpha(component)) return;
       if (!componentsChanged && !cameraMoved) return;
+
+      const spec = ro.spec;
+      const centers = spec.getCenters(component);
 
       // Get or create sorted indices array
       const count = ro.lastRenderCount;
@@ -2312,13 +2314,7 @@ export function SceneInner({
         ro.distances = new Float32Array(count);
       }
 
-      if (ro.centers) {
-        getSortedIndices(camState.position, ro.centers, ro.sortedIndices, ro.distances!);
-      }
-
-      const component = components![ro.componentIndex];
-      const spec = primitiveRegistry[component.type];
-      if (!spec || !gpuRef.current) return;
+      getSortedIndices(camState.position, centers, ro.sortedIndices, ro.distances!);
 
       // Rebuild render data with new sorting
       spec.buildRenderData(component, ro.cachedRenderData, ro.sortedIndices);
@@ -2762,27 +2758,10 @@ function getSortedIndices(cameraPos: glMatrix.vec3, centers: Float32Array, targe
   target.sort((a, b) => distances[b] - distances[a]);
 }
 
-function hasTransparency(alphas: Float32Array | null, defaultAlpha: number, decorations?: Decoration[]): boolean {
-    return alphas !== null ||
-           defaultAlpha !== 1.0 ||
-           (decorations?.some(d => d.alpha  !== undefined && d.alpha !== 1.0 && d.indexes?.length > 0) ?? false);
-}
-
 function componentHasAlpha(component: ComponentConfig) {
   return (
     (component.alphas && component.alphas?.length > 0)
     || (component.alpha && component.alpha !== 1.0)
     || component.decorations?.some(d => (d.alpha !== undefined && d.alpha !== 1.0 && d.indexes?.length > 0))
   )
-}
-
-
-function getTransparencyProperties(component: ComponentConfig, spec: PrimitiveSpec<any>): Pick<RenderObject, 'needsSort' | 'centers'> | undefined {
-  const count = spec.getCount(component);
-  if (count === 0) return undefined;
-  if (!componentHasAlpha(component)) return undefined;
-  return {
-    needsSort: true,
-    centers: spec.getCenters(component)
-  };
 }
