@@ -202,6 +202,9 @@ export interface RenderObject {
   };
 
   componentOffsets: ComponentOffset[];  // Add this field
+
+  /** Reference to the primitive spec that created this render object */
+  spec: PrimitiveSpec<any>;
 }
 
 export interface RenderObjectCache {
@@ -247,6 +250,11 @@ export interface SceneInnerProps {
 
 
 interface PrimitiveSpec<E> {
+  /**
+   * The type/name of this primitive spec
+   */
+  type: ComponentConfig['type'];
+
   /**
    * Returns the number of instances in this component.
    */
@@ -385,6 +393,7 @@ function getIndicesAndMapping(count: number, sortedIndices?: Uint32Array): {
 }
 
 const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
+  type: 'PointCloud',
   getCount(elem) {
     return elem.positions.length / 3;
   },
@@ -570,6 +579,7 @@ export interface EllipsoidComponentConfig extends BaseComponentConfig {
 }
 
 const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
+  type: 'Ellipsoid',
   getCount(elem) {
     return elem.centers.length / 3;
   },
@@ -740,6 +750,7 @@ export interface EllipsoidAxesComponentConfig extends BaseComponentConfig {
 }
 
 const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
+  type: 'EllipsoidAxes',
   getCount(elem) {
     // Each ellipsoid has 3 rings
     return (elem.centers.length / 3) * 3;
@@ -923,6 +934,7 @@ export interface CuboidComponentConfig extends BaseComponentConfig {
 }
 
 const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
+  type: 'Cuboid',
   getCount(elem){
     return elem.centers.length / 3;
   },
@@ -1104,6 +1116,7 @@ function countSegments(positions: Float32Array): number {
 }
 
 const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
+  type: 'LineBeams',
   getCount(elem) {
     return countSegments(elem.positions);
   },
@@ -2039,7 +2052,8 @@ export function SceneInner({
             cachedRenderData: renderData,
             cachedPickingData: pickingData,
             lastRenderCount: count,
-            componentOffsets: componentOffsets
+            componentOffsets: componentOffsets,
+            spec: spec  // Store reference to the spec
           };
 
           // Store in cache
@@ -2060,6 +2074,7 @@ export function SceneInner({
           renderObject.componentIndex = info.indices[0];
           renderObject.cachedRenderData = info.datas[0];
           renderObject.componentOffsets = componentOffsets;
+          renderObject.spec = spec;  // Update spec reference even when reusing object
 
           // Update picking data if needed
           if (renderObject.pickingDataStale) {
