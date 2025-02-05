@@ -191,9 +191,8 @@ export interface RenderObject {
   // Temporary sorting state
   sortedIndices?: Uint32Array;
   distances?: Float32Array;
-  centers?: Float32Array;           // Add centers array for reuse
 
-  componentOffsets: ComponentOffset[];  // Add this field
+  componentOffsets: ComponentOffset[];
 
   /** Reference to the primitive spec that created this render object */
   spec: PrimitiveSpec<any>;
@@ -1765,22 +1764,32 @@ function updateInstanceSorting(
 ): void {
   const totalCount = ro.lastRenderCount;
 
-  // Ensure all arrays exist and are correctly sized
-  ro.centers = ensureArray(ro.centers, totalCount * 3, Float32Array);
+  // Ensure sorting arrays exist and are correctly sized
   ro.sortedIndices = ensureArray(ro.sortedIndices, totalCount, Uint32Array);
   ro.distances = ensureArray(ro.distances, totalCount, Float32Array);
 
-  // Collect centers from all components
-  let centerOffset = 0;
+  // Initialize indices and compute distances
+  let globalIdx = 0;
   ro.componentOffsets.forEach(offset => {
     const component = components[offset.componentIdx];
     const componentCenters = ro.spec.getCenters(component);
-    ro.centers!.set(componentCenters, centerOffset);
-    centerOffset += componentCenters.length;
+
+    // Process each instance in this component
+    for (let i = 0; i < offset.count; i++) {
+      ro.sortedIndices![globalIdx] = globalIdx;
+
+      const base = i * 3;
+      const dx = componentCenters[base + 0] - cameraPos[0];
+      const dy = componentCenters[base + 1] - cameraPos[1];
+      const dz = componentCenters[base + 2] - cameraPos[2];
+      ro.distances![globalIdx] = dx * dx + dy * dy + dz * dz;
+
+      globalIdx++;
+    }
   });
 
-  // Perform the sort
-  getSortedIndices(cameraPos, ro.centers, ro.sortedIndices, ro.distances);
+  // Sort indices based on distances
+  ro.sortedIndices.sort((a: number, b: number) => ro.distances![b] - ro.distances![a]);
 }
 
 export function SceneInner({
@@ -2738,25 +2747,6 @@ export function SceneInner({
         />
     </div>
   );
-}
-
-// Add this helper function at the top of the file
-function getSortedIndices(
-  cameraPos: glMatrix.vec3,
-  centers: Float32Array,
-  target: Uint32Array,
-  distances: Float32Array
-): void {
-  const count = target.length;
-  for (let i = 0; i < count; i++) {
-    target[i] = i;
-    const base = i * 3;
-    const dx = centers[base + 0] - cameraPos[0];
-    const dy = centers[base + 1] - cameraPos[1];
-    const dz = centers[base + 2] - cameraPos[2];
-    distances[i] = dx * dx + dy * dy + dz * dz;
-  }
-  target.sort((a: number, b: number) => distances[b] - distances[a]);
 }
 
 function componentHasAlpha(component: ComponentConfig) {
