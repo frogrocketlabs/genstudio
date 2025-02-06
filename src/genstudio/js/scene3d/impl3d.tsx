@@ -72,7 +72,7 @@ function initGeometryResources(device: GPUDevice, resources: GeometryResources) 
 }
 
 const primitiveRegistry: Record<ComponentConfig['type'], PrimitiveSpec<any>> = {
-  PointCloud: pointCloudSpec,  // Use consolidated spec
+  PointCloud: pointCloudSpec,
   Ellipsoid: ellipsoidSpec,
   EllipsoidAxes: ellipsoidAxesSpec,
   Cuboid: cuboidSpec,
@@ -87,16 +87,13 @@ const ensurePickingData = (device: GPUDevice, components: ComponentConfig[], ren
 
   if (!spec) return;
 
-  // Get sorted indices if we have transparency
   const sortedIndices = renderObject.sortedIndices;
 
-  // Build picking data for each component in this render object
   let pickingDataOffset = 0;
   const floatsPerInstance = spec.getFloatsPerPicking();
 
   componentOffsets.forEach(offset => {
     const componentCount = offset.count;
-    // Create a view into the existing picking data array
     const componentPickingData = new Float32Array(
       renderObject.cachedPickingData.buffer,
       renderObject.cachedPickingData.byteOffset + pickingDataOffset * Float32Array.BYTES_PER_ELEMENT,
@@ -106,7 +103,6 @@ const ensurePickingData = (device: GPUDevice, components: ComponentConfig[], ren
     pickingDataOffset += componentCount * floatsPerInstance;
   });
 
-  // Write picking data to buffer
   const pickingInfo = renderObject.pickingVertexBuffers[1] as BufferInfo;
   device.queue.writeBuffer(
     pickingInfo.buffer,
@@ -129,7 +125,6 @@ function computeUniforms(containerWidth: number, containerHeight: number, camSta
   camUp: glMatrix.vec3,
   lightDir: glMatrix.vec3
 } {
-    // Update camera uniforms
     const aspect = containerWidth / containerHeight;
     const view = glMatrix.mat4.lookAt(
       glMatrix.mat4.create(),
@@ -146,7 +141,6 @@ function computeUniforms(containerWidth: number, containerHeight: number, camSta
       camState.far
     );
 
-    // Compute MVP matrix
     const mvp = glMatrix.mat4.multiply(
       glMatrix.mat4.create(),
       proj,
@@ -256,7 +250,6 @@ function computeUniformData(containerWidth: number, containerHeight: number, cam
   ]);
 }
 
-// Helper to manage reusable arrays in RenderObject
 function ensureArray<T extends Float32Array | Uint32Array>(
   current: T | undefined,
   length: number,
@@ -285,17 +278,14 @@ function updateInstanceSorting(
 ): void {
   const totalCount = ro.lastRenderCount;
 
-  // Ensure sorting arrays exist and are correctly sized
   ro.sortedIndices = ensureArray(ro.sortedIndices, totalCount, Uint32Array);
   ro.distances = ensureArray(ro.distances, totalCount, Float32Array);
 
-  // Initialize indices and compute distances
   let globalIdx = 0;
   ro.componentOffsets.forEach(offset => {
     const component = components[offset.componentIdx];
     const componentCenters = ro.spec.getCenters(component);
 
-    // Process each instance in this component
     for (let i = 0; i < offset.count; i++) {
       ro.sortedIndices![globalIdx] = globalIdx;
 
@@ -309,7 +299,6 @@ function updateInstanceSorting(
     }
   });
 
-  // Sort indices based on distances
   ro.sortedIndices.sort((a: number, b: number) => ro.distances![b] - ro.distances![a]);
 }
 
@@ -357,7 +346,6 @@ export function SceneInner({
 
   const [isReady, setIsReady] = useState(false);
 
-  // Update the camera initialization
   const [internalCamera, setInternalCamera] = useState<CameraState>(() => {
       return createCameraState(defaultCamera);
   });
@@ -370,7 +358,6 @@ export function SceneInner({
       return internalCamera;
   }, [controlledCamera, internalCamera]);
 
-  // Update handleCameraUpdate to use activeCamera
   const handleCameraUpdate = useCallback((updateFn: (camera: CameraState) => CameraState) => {
     const newCameraState = updateFn(activeCamera);
 
@@ -382,13 +369,10 @@ export function SceneInner({
     }
 }, [activeCamera, controlledCamera, onCameraChange]);
 
-  // We'll also track a picking lock
   const pickingLockRef = useRef(false);
 
-  // Add hover state tracking
   const lastHoverState = useRef<{componentIdx: number, instanceIdx: number} | null>(null);
 
-  // Add cache to store previous render objects
   const renderObjectCache = useRef<RenderObjectCache>({});
 
   /******************************************************
@@ -409,7 +393,6 @@ export function SceneInner({
       const format = navigator.gpu.getPreferredCanvasFormat();
       context.configure({ device, format, alphaMode:'premultiplied' });
 
-      // Create bind group layout
       const bindGroupLayout = device.createBindGroupLayout({
         entries: [{
           binding: 0,
@@ -418,27 +401,23 @@ export function SceneInner({
         }]
       });
 
-      // Create uniform buffer
       const uniformBufferSize=128;
       const uniformBuffer=device.createBuffer({
         size: uniformBufferSize,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
       });
 
-      // Create bind group using the new layout
       const uniformBindGroup = device.createBindGroup({
         layout: bindGroupLayout,
         entries: [{ binding:0, resource:{ buffer:uniformBuffer } }]
       });
 
-      // Readback buffer for picking
       const readbackBuffer = device.createBuffer({
         size: 256,
         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
         label: 'Picking readback buffer'
       });
 
-      // First create gpuRef.current with empty resources
       gpuRef.current = {
         device,
         context,
@@ -517,11 +496,7 @@ export function SceneInner({
     gpuRef.current.pickDepthTexture = depthTex;
 }, []);
 
-  /******************************************************
-   * C) Building the RenderObjects (no if/else)
-   ******************************************************/
 
-  // Add this type definition at the top of the file
   type ComponentType = ComponentConfig['type'];
 
   interface TypeInfo {
@@ -825,11 +800,10 @@ export function SceneInner({
   }
 
   /******************************************************
-   * D) Render pass (single call, no loop)
+   * C) Render pass (single call, no loop)
    ******************************************************/
 
 
-  // Update renderFrame to use new helpers
   const renderFrame = useCallback(function renderFrameInner(camState: CameraState, components?: ComponentConfig[]) {
     if(!gpuRef.current) return;
 
@@ -883,7 +857,7 @@ export function SceneInner({
 
 
   /******************************************************
-   * E) Pick pass (on hover/click)
+   * D) Pick pass (on hover/click)
    ******************************************************/
   async function pickAtScreenXY(screenX: number, screenY: number, mode: 'hover'|'click') {
     if(!gpuRef.current || !canvasRef.current || pickingLockRef.current) return;
@@ -1075,7 +1049,7 @@ export function SceneInner({
   }
 
   /******************************************************
-   * F) Mouse Handling
+   * E) Mouse Handling
    ******************************************************/
   /**
    * Tracks the current state of mouse interaction with the scene.
@@ -1193,7 +1167,7 @@ export function SceneInner({
   }, [handleScene3dMouseMove, handleScene3dMouseDown, handleScene3dMouseUp, handleScene3dMouseLeave]);
 
   /******************************************************
-   * G) Lifecycle & Render-on-demand
+   * F) Lifecycle & Render-on-demand
    ******************************************************/
   // Init once
   useEffect(()=>{
