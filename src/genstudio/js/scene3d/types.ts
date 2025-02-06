@@ -1,5 +1,3 @@
-
-
 export interface PipelineCacheEntry {
     pipeline: GPURenderPipeline;
     device: GPUDevice;
@@ -194,15 +192,20 @@ export interface BaseComponentConfig {
     colorWriteMask?: number;  // Use number instead of GPUColorWrite
   }
 
-  export interface GeometryResource {
-    vb: GPUBuffer;
-    ib: GPUBuffer;
-    indexCount: number;
-    vertexCount: number;  // Add vertexCount
-  }
+export interface GeometryResource {
+  vb: GPUBuffer;
+  ib: GPUBuffer;
+  indexCount?: number;
+  vertexCount?: number;
+}
 
-  export type GeometryResources = Record<string, GeometryResource | null>;
-
+export interface GeometryResources {
+  PointCloud: GeometryResource | null;
+  Ellipsoid: GeometryResource | null;
+  EllipsoidAxes: GeometryResource | null;
+  Cuboid: GeometryResource | null;
+  LineBeams: GeometryResource | null;
+}
 
 export interface BufferInfo {
     buffer: GPUBuffer;
