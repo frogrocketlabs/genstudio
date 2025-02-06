@@ -940,7 +940,7 @@ def Slider(
     loop: Union[bool, JSExpr] = True,
     label: Optional[Union[str, JSExpr]] = None,
     showValue: Union[bool, JSExpr] = False,
-    controls: Optional[Union[List[str], JSExpr]] = None,
+    controls: Optional[Union[List[str], JSExpr, bool]] = None,
     className: Optional[str] = None,
     style: Optional[Dict[str, Any]] = None,
     **kwargs: Any,
