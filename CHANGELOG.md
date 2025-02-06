@@ -1,3 +1,7 @@
+### [2025.2.1] - Feb 06, 2025
+
+- remove genjax dep, relax python versions
+
 ### [2025.1.12] - Jan 27, 2025
 
 - Slider sets initial state if undefined
