@@ -1,3 +1,8 @@
+### [2025.2.2] - Feb 07, 2025
+
+- `childEvents` includes modifier properties on event
+- `childEvents` supports onMouseEnter, onMouseLeave
+
 ### [2025.2.1] - Feb 06, 2025
 
 - remove genjax dep, relax python versions
