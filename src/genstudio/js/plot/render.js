@@ -12,10 +12,13 @@ import { calculateScaleFactors, invertPoint } from "./style";
  * @param {Function} [options.onDrag] - Callback function called during dragging.
  * @param {Function} [options.onDragEnd] - Callback function called when dragging ends.
  * @param {Function} [options.onClick] - Callback function called when a child element is clicked.
+ * @param {Function} [options.onMouseEnter] - Callback function called when mouse enters a plot element.
+ * @param {Function} [options.onMouseLeave] - Callback function called when mouse leaves a plot element.
  * @returns {Function} A render function to be used in the Observable Plot rendering pipeline.
  *
  */
-export function childEvents({onDragStart, onDrag, onDragEnd, onClick}) {
+
+export function childEvents({onDragStart, onDrag, onDragEnd, onClick, onMouseEnter, onMouseLeave}) {
     function render (index, scales, values, dimensions, context, next) {
         // Call the next render function to get the base SVG group
         const g = next(index, scales, values, dimensions, context);
@@ -25,11 +28,13 @@ export function childEvents({onDragStart, onDrag, onDragEnd, onClick}) {
         let initialUnscaledX, initialUnscaledY;
         let initialIndex;
         let initialTransform = '';
-        let isDragging = false;
         const dragThreshold = 2; // pixels
         let clickStartTime;
         let scaleX, scaleY;
         let scaleFactors;
+        let isDragging = false;
+        // Store initial event modifiers when drag starts
+        let dragModifiers = null;
 
         // Create empty local objects for scaled and unscaled values.
         // These are used to track the current positions of children that
@@ -50,12 +55,9 @@ export function childEvents({onDragStart, onDrag, onDragEnd, onClick}) {
             scaleFactors = calculateScaleFactors(svg);
         };
 
-        // Convert pixel coordinates to data coordinates
-        const convertToDataCoords = (x, y) => invertPoint(x, y, scales, scaleFactors);
-
         // Helper function to create a payload for callbacks
         // This includes both scaled (pixel) and unscaled (data) coordinates
-        const createPayload = (index, unscaledX, unscaledY, type) => ({
+        const createPayload = (index, unscaledX, unscaledY, type, event) => ({
             index,
             x: unscaledX,
             y: unscaledY,
@@ -63,7 +65,12 @@ export function childEvents({onDragStart, onDrag, onDragEnd, onClick}) {
                 x: scales.x(unscaledX) * scaleX,
                 y: scales.y(unscaledY) * scaleY
             },
-            type
+            type,
+            // Use stored modifiers for drag events, current event modifiers otherwise
+            altKey: type.startsWith('drag') ? dragModifiers.altKey : event.altKey,
+            ctrlKey: type.startsWith('drag') ? dragModifiers.ctrlKey : event.ctrlKey,
+            metaKey: type.startsWith('drag') ? dragModifiers.metaKey : event.metaKey,
+            shiftKey: type.startsWith('drag') ? dragModifiers.shiftKey : event.shiftKey
         });
 
         // Helper function to parse existing SVG transforms
@@ -93,6 +100,14 @@ export function childEvents({onDragStart, onDrag, onDragEnd, onClick}) {
             initialUnscaledY = localUnscaledValues.y[initialIndex] ?? values.channels.y.value[initialIndex];
             initialTransform = activeElement.getAttribute('transform') || '';
 
+            // Store initial event modifiers
+            dragModifiers = {
+                altKey: event.altKey,
+                ctrlKey: event.ctrlKey,
+                metaKey: event.metaKey,
+                shiftKey: event.shiftKey
+            };
+
             clickStartTime = new Date().getTime();
 
             document.addEventListener('mousemove', handleDrag);
@@ -107,7 +122,7 @@ export function childEvents({onDragStart, onDrag, onDragEnd, onClick}) {
 
             if (!isDragging && (Math.abs(totalDx) > dragThreshold || Math.abs(totalDy) > dragThreshold)) {
                 isDragging = true;
-                if (onDragStart) onDragStart(createPayload(initialIndex, initialUnscaledX, initialUnscaledY, "dragstart"));
+                if (onDragStart) onDragStart(createPayload(initialIndex, initialUnscaledX, initialUnscaledY, "dragstart", event));
             }
 
             if (isDragging) {
@@ -119,7 +134,7 @@ export function childEvents({onDragStart, onDrag, onDragEnd, onClick}) {
                 const newTranslateX = initialTranslate.x + totalDx * scaleX;
                 const newTranslateY = initialTranslate.y + totalDy * scaleY;
 
-                if (onDrag) onDrag(createPayload(initialIndex, currentUnscaledX, currentUnscaledY, "drag"))
+                if (onDrag) onDrag(createPayload(initialIndex, currentUnscaledX, currentUnscaledY, "drag", event))
 
                 // Update the SVG transform to move the element
                 activeElement.setAttribute('transform', `translate(${newTranslateX}, ${newTranslateY})`);
@@ -147,13 +162,13 @@ export function childEvents({onDragStart, onDrag, onDragEnd, onClick}) {
                 const finalTranslateX = initialTranslate.x + totalDx * scaleX;
                 const finalTranslateY = initialTranslate.y + totalDy * scaleY;
 
-                if (onDragEnd) onDragEnd(createPayload(initialIndex, finalUnscaledX, finalUnscaledY, "dragend"));
+                if (onDragEnd) onDragEnd(createPayload(initialIndex, finalUnscaledX, finalUnscaledY, "dragend", event));
 
                 // Set the final transform on the SVG element
                 activeElement.setAttribute('transform', `translate(${finalTranslateX}, ${finalTranslateY})`);
             } else if (clickDuration < 200 && Math.abs(totalDx) < dragThreshold && Math.abs(totalDy) < dragThreshold) {
                 // If it's a short click and hasn't moved much, treat it as a click
-                if (onClick) onClick(createPayload(initialIndex, initialUnscaledX, initialUnscaledY, "click"));
+                if (onClick) onClick(createPayload(initialIndex, initialUnscaledX, initialUnscaledY, "click", event));
             }
 
             // Clean up event listeners
@@ -165,10 +180,44 @@ export function childEvents({onDragStart, onDrag, onDragEnd, onClick}) {
             totalDx = 0;
             totalDy = 0;
             isDragging = false;
+            dragModifiers = null;
         };
 
-        // Add mousedown event listener to the SVG group
+        const handleMouseEnter = (event) => {
+            if (isDragging || !onMouseEnter) return;
+            const hoveredElement = event.target.parentNode === g ? event.target : null;
+            if (!hoveredElement) return;
+
+            const index = Array.from(g.children).indexOf(hoveredElement);
+            const unscaledX = values.channels.x.value[index];
+            const unscaledY = values.channels.y.value[index];
+
+            onMouseEnter(createPayload(index, unscaledX, unscaledY, "mouseenter", event))
+        };
+
+        const handleMouseLeave = (event) => {
+            if (!onMouseLeave) return;
+            const hoveredElement = event.target.parentNode === g && g.parentNode ? event.target : null;
+            if (!hoveredElement) return;
+
+            const index = Array.from(g.children).indexOf(hoveredElement);
+            const unscaledX = values.channels.x.value[index];
+            const unscaledY = values.channels.y.value[index];
+
+            if (onMouseLeave) onMouseLeave(createPayload(index, unscaledX, unscaledY, "mouseleave", event));
+        };
+
+        // Add event listeners to the SVG group
+
         g.addEventListener('mousedown', handleDragStart);
+        g.addEventListener('mouseout', handleMouseLeave, true);
+
+        // add `mouseenter` listener after `g` has been added to the DOM
+        // (otherwise it is called during drag events)
+        setTimeout(() => {
+            g.addEventListener('mouseenter', handleMouseEnter, true);
+        }, 100)
+
 
         return g;
     }
