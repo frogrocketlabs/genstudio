@@ -1,3 +1,7 @@
+### [2025.2.3] - Feb 25, 2025
+
+- fix Slider init
+
 ### [2025.2.2] - Feb 07, 2025
 
 - `childEvents` includes modifier properties on event
