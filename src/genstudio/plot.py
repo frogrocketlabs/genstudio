@@ -957,23 +957,24 @@ def Slider(
     Example:
         >>> Plot.Slider("frame", init=0, range=100, fps=30, label="Frame")
     """
-    init = kwargs.get("init")
     rangeFrom = kwargs.get("rangeFrom")
     tail = kwargs.get("tail")
 
-    if init is None and range is None and rangeFrom is None:
-        raise ValueError("Slider: 'init', 'range', or 'rangeFrom' must be defined")
+    if range is None and rangeFrom is None:
+        raise ValueError("'range', or 'rangeFrom' must be defined")
     if tail and rangeFrom is None:
         raise ValueError("Slider: 'tail' can only be used when 'rangeFrom' is provided")
-    init = (
-        Ref(init, state_key=key, sync=True) if init is not None else js(f"$state.{key}")
-    )
-    slider_options = {
+
+    if init is None:
+        init = js(f"$state.{key}")
+    else:
+        init = Ref(init, state_key=key, sync=True)
+
+    slider_options = kwargs | {
         "state_key": key,
         "init": init,
         "range": range,
         "kind": "Slider",
-        **kwargs,
     }
 
     return Hiccup([_Slider, slider_options])
