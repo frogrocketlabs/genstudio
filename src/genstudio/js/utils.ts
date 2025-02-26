@@ -226,7 +226,7 @@ export function joinClasses(...classes) {
  * Deep equality check that only traverses plain objects and arrays.
  * All other types (including TypedArrays) are compared by identity.
  */
-export function shallowDeepEqual(a: any, b: any): boolean {
+export function deepEqualModuloTypedArrays(a: any, b: any): boolean {
     if (a === b) return true;
 
     // Check if both are arrays OR both are plain objects
@@ -241,7 +241,7 @@ export function shallowDeepEqual(a: any, b: any): boolean {
 
         return keys.every(key => (
             Object.prototype.hasOwnProperty.call(b, key) &&
-            shallowDeepEqual(a[key], b[key])
+            deepEqualModuloTypedArrays(a[key], b[key])
         ));
     }
 
@@ -252,7 +252,7 @@ export function shallowDeepEqual(a: any, b: any): boolean {
 export function useShallowMemo<T>(value: T): T {
   const ref = useRef<T>();
 
-  if (!ref.current || !shallowDeepEqual(value, ref.current)) {
+  if (!ref.current || !deepEqualModuloTypedArrays(value, ref.current)) {
       ref.current = value;
   }
 
