@@ -121,7 +121,7 @@ export const Slider = mobxReact.observer(
 
         useEffect(() => {
             if ($state[state_key] === undefined) {
-                if (init === undefined) {
+                if (init == null) {
                     if (rangeMin === undefined) {
                         throw new Error("Slider: 'init', 'rangeFrom', or 'range' must be defined");
                     }

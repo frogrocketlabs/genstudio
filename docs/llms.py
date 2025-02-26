@@ -125,6 +125,62 @@ from genstudio.plot import js
     )
     | Plot.md("**instructions**: drag to move, shift-drag to rotate")
 )
+# User: Nice work. Can we add a direction line to each point, and shift-drag to rotate each point?
+(
+    Plot.initialState({"points": []})
+    | Plot.events(
+        # one {x, y, angle} object per point
+        {
+            "onClick": js(
+                "(e) => $state.update(['points', 'append', {x: e.x, y: e.y, angle: 0}])"
+            )
+        }
+    )
+    + (
+        Plot.dot(
+            (js("$state.points")),
+            r=10,
+            x="x",
+            y="y",
+            render=Plot.renderChildEvents(
+                {
+                    "onDrag": js(
+                        """ (e) => {
+                    const point = $state.points[e.index];
+                    if (e.shiftKey) {
+                        // Calculate angle between point and drag position
+                        const dx = e.x - point.x;
+                        const dy = e.y - point.y;
+                        const angle = Math.atan2(dy, dx);
+                        $state.update(["points", "setAt", [e.index, {x: point.x, y: point.y, angle}]]);
+                    } else {
+                        // Normal drag - update position
+                        $state.update(["points", "setAt", [e.index, {x: e.x, y: e.y, angle: point.angle}]]);
+                    }
+                   }"""
+                    )
+                }
+            ),
+        )
+        + Plot.line(
+            js("""
+            $state.points.map((p, i) => {
+                const length = 0.1; // Length of direction line
+                return [{...p, z: i},
+                        {x: p.x + length * Math.cos(p.angle || 0),
+                         y: p.y + length * Math.sin(p.angle || 0),
+                         z: i}]
+            }).flat()
+            """),
+            stroke="red",
+            x="x",
+            y="y",
+            z="z",
+        )
+        + Plot.domain([0, 1])
+    )
+    | Plot.md("**instructions**: drag to move, shift-drag to rotate")
+)
 # </example>
 # %%
 # <example>
