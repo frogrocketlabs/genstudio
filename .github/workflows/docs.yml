@@ -37,24 +37,22 @@ jobs:
       uses: snok/install-poetry@v1
       with:
         version: 1.8.3
-    - id: auth
-      uses: google-github-actions/auth@v2
-      with:
-        credentials_json: "${{ secrets.ARTIFACT_REGISTRY_KEY }}"
-    - name: Deploy key config
-      run: |
-        poetry self add keyrings.google-artifactregistry-auth
-        poetry config repositories.gcp https://us-west1-python.pkg.dev/probcomp-caliban/probcomp/
+
     - name: Python deps (via poetry)
       run: poetry install
+
     - name: Kernel install
       run: poetry run python -m ipykernel install --user --name genstudio
+
     - name: mkdocs build
       run: poetry run mkdocs build
+
     - name: Copy llms.py to site
       run: cp docs/llms.py ./site/
+
     - name: Setup Pages
       uses: actions/configure-pages@v5
+
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
       with:
