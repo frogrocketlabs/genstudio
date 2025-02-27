@@ -118,83 +118,23 @@ export function createCubeGeometry() {
 /******************************************************
  * createBeamGeometry
  * Returns a "unit beam" from z=0..1, with rectangular cross-section of width=1.
- * Includes all six faces of the beam.
+ * Reuses cube geometry with transformation to match original beam positions.
  ******************************************************/
 export function createBeamGeometry() {
-  const vertexData: number[] = [];
-  const indexData: number[] = [];
-  let vertexCount = 0;
+  // Get base cube geometry
+  const cube = createCubeGeometry();
+  const vertexData = new Float32Array(cube.vertexData);
 
-  // Helper to add a quad face with normal
-  function addQuad(
-    p1: [number, number, number],
-    p2: [number, number, number],
-    p3: [number, number, number],
-    p4: [number, number, number],
-    normal: [number, number, number]
-  ) {
-    // Add vertices with positions and normals
-    vertexData.push(
-      // First vertex
-      p1[0], p1[1], p1[2],  normal[0], normal[1], normal[2],
-      // Second vertex
-      p2[0], p2[1], p2[2],  normal[0], normal[1], normal[2],
-      // Third vertex
-      p3[0], p3[1], p3[2],  normal[0], normal[1], normal[2],
-      // Fourth vertex
-      p4[0], p4[1], p4[2],  normal[0], normal[1], normal[2]
-    );
-
-    // Add indices for two triangles
-    indexData.push(
-      vertexCount + 0, vertexCount + 1, vertexCount + 2,
-      vertexCount + 2, vertexCount + 1, vertexCount + 3
-    );
-    vertexCount += 4;
+  // Transform vertices:
+  // Move z from [-0.5,0.5] to [0,1] by adding 0.5
+  // This preserves the x,y centering while making z go from 0 to 1
+  for(let i = 0; i < vertexData.length; i += 6) {
+    // Only transform position z coordinate (first 3 components), not normals
+    vertexData[i + 2] = vertexData[i + 2] + 0.5;
   }
 
-  // Create the six faces of the beam
-  // We'll create a beam centered in X and Y, extending from Z=0 to Z=1
-  const w = 0.5;  // Half-width, so total width is 1
-
-  // Front face (z = 0)
-  addQuad(
-    [-w, -w, 0], [w, -w, 0], [-w, w, 0], [w, w, 0],
-    [0, 0, -1]
-  );
-
-  // Back face (z = 1)
-  addQuad(
-    [w, -w, 1], [-w, -w, 1], [w, w, 1], [-w, w, 1],
-    [0, 0, 1]
-  );
-
-  // Right face (x = w)
-  addQuad(
-    [w, -w, 0], [w, -w, 1], [w, w, 0], [w, w, 1],
-    [1, 0, 0]
-  );
-
-  // Left face (x = -w)
-  addQuad(
-    [-w, -w, 1], [-w, -w, 0], [-w, w, 1], [-w, w, 0],
-    [-1, 0, 0]
-  );
-
-  // Top face (y = w)
-  addQuad(
-    [-w, w, 0], [w, w, 0], [-w, w, 1], [w, w, 1],
-    [0, 1, 0]
-  );
-
-  // Bottom face (y = -w)
-  addQuad(
-    [-w, -w, 1], [w, -w, 1], [-w, -w, 0], [w, -w, 0],
-    [0, -1, 0]
-  );
-
   return {
-    vertexData: new Float32Array(vertexData),
-    indexData: new Uint16Array(indexData)
+    vertexData,
+    indexData: cube.indexData
   };
 }

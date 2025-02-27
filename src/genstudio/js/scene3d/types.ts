@@ -240,6 +240,9 @@ export interface BufferInfo {
     sortedIndices?: Uint32Array;
     distances?: Float32Array;
 
+    // Cache for partitioned indices to reduce GC pressure
+    cachedPartitions?: Uint32Array[];
+
     componentOffsets: ComponentOffset[];
 
     /** Reference to the primitive spec that created this render object */

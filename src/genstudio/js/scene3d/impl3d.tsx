@@ -24,7 +24,7 @@ import {
 import { ComponentConfig, cuboidSpec, ellipsoidAxesSpec, ellipsoidSpec, lineBeamsSpec, pointCloudSpec, } from './components';
 import { unpackID } from './picking';
 import { LIGHTING } from './shaders';
-import { BufferInfo, GeometryResources, PrimitiveSpec, RenderObject, PipelineCacheEntry, DynamicBuffers, RenderObjectCache, ComponentOffset } from './types';
+import { BufferInfo, GeometryResources, GeometryResource, PrimitiveSpec, RenderObject, PipelineCacheEntry, DynamicBuffers, RenderObjectCache, ComponentOffset } from './types';
 
 /**
  * Aligns a size or offset to 16 bytes, which is a common requirement for WebGPU buffers.
@@ -82,47 +82,34 @@ const primitiveRegistry: Record<ComponentConfig['type'], PrimitiveSpec<any>> = {
 
 function ensurePickingData(device: GPUDevice, components: ComponentConfig[], ro: RenderObject) {
   if (!ro.pickingDataStale) return;
+  // We'll work directly with the cached picking data to avoid an extra allocation and copy
+  const pickingData = ro.cachedPickingData;
 
-  // Get total instance count
-  const totalCount = ro.componentOffsets.reduce((sum, offset) => sum + offset.count, 0);
+  // Partition the sortedIndices array if it exists, otherwise create sequential indices
+  // Use the cached partitions if available to reduce allocations
+  const componentPartitions = ro.cachedPartitions ||
+  createSequentialIndices(ro.componentOffsets, undefined);
+  ro.cachedPartitions = ro.cachedPartitions || componentPartitions;
 
-  // Create a new picking data array
-  const newPickingData = new Float32Array(ro.cachedPickingData.length);
+  // Store the partitions for future reuse
+  ro.cachedPartitions = componentPartitions;
 
-  // For each component, filter and adjust sortedIndices, then build picking data
+  // For each component, use the partitioned indices to build picking data
   let dataOffset = 0;
-  for (const offset of ro.componentOffsets) {
+  for (let i = 0; i < ro.componentOffsets.length; i++) {
+    const offset = ro.componentOffsets[i];
     const component = components[offset.componentIdx];
     const count = offset.count;
     const floatsPerInstance = ro.spec.getFloatsPerPicking();
     const componentFloats = count * floatsPerInstance;
 
-    // Filter sortedIndices to only include indices for this component
-    // and adjust them to be relative to the component
-    const componentIndices = new Uint32Array(count);
-    let componentIndexCount = 0;
+    // Get the pre-partitioned indices for this component
+    const componentIndices = componentPartitions[i];
 
-    // Check if sortedIndices exists before using it
-    if (ro.sortedIndices) {
-      for (let i = 0; i < totalCount; i++) {
-        const globalIdx = ro.sortedIndices[i];
-        if (globalIdx >= offset.start && globalIdx < offset.start + count) {
-          // This index belongs to this component
-          // Adjust it to be relative to the component
-          componentIndices[componentIndexCount++] = globalIdx - offset.start;
-        }
-      }
-    } else {
-      // If no sorted indices, use sequential indices
-      for (let i = 0; i < count; i++) {
-        componentIndices[componentIndexCount++] = i;
-      }
-    }
-
-    // Create a view into the new picking data array for this component
+    // Create a view into the picking data array for this component
     const componentView = new Float32Array(
-      newPickingData.buffer,
-      newPickingData.byteOffset + dataOffset * Float32Array.BYTES_PER_ELEMENT,
+      pickingData.buffer,
+      pickingData.byteOffset + dataOffset * Float32Array.BYTES_PER_ELEMENT,
       componentFloats
     );
 
@@ -133,17 +120,14 @@ function ensurePickingData(device: GPUDevice, components: ComponentConfig[], ro:
     dataOffset += componentFloats;
   }
 
-  // Copy the new picking data to the cached picking data
-  ro.cachedPickingData.set(newPickingData);
-
   // Write picking data to GPU
   const pickingInfo = ro.pickingVertexBuffers[1] as BufferInfo;
   device.queue.writeBuffer(
     pickingInfo.buffer,
     pickingInfo.offset,
-    ro.cachedPickingData.buffer,
-    ro.cachedPickingData.byteOffset,
-    ro.cachedPickingData.byteLength
+    pickingData.buffer,
+    pickingData.byteOffset,
+    pickingData.byteLength
   );
 
   ro.pickingDataStale = false;
@@ -284,17 +268,6 @@ function computeUniformData(containerWidth: number, containerHeight: number, cam
   ]);
 }
 
-function ensureArray<T extends Float32Array | Uint32Array>(
-  current: T | undefined,
-  length: number,
-  constructor: new (length: number) => T
-): T {
-  if (!current || current.length !== length) {
-    return new constructor(length);
-  }
-  return current;
-}
-
 // Helper to check if camera has moved significantly
 function hasCameraMoved(current: glMatrix.vec3, last: glMatrix.vec3 | undefined): boolean {
   if (!last) return true;
@@ -319,9 +292,17 @@ function updateInstanceSorting(
   // Get total instance count
   const totalCount = ro.componentOffsets.reduce((sum, offset) => sum + offset.count, 0);
 
+  // Check if we need to reallocate arrays (only if count changed)
+  const needsReallocation = !ro.sortedIndices || ro.sortedIndices.length !== totalCount ||
+                           !ro.distances || ro.distances.length !== totalCount;
+
   // Ensure we have arrays of the right size
-  ro.sortedIndices = ensureArray(ro.sortedIndices, totalCount, Uint32Array);
-  ro.distances = ensureArray(ro.distances, totalCount, Float32Array);
+  if (needsReallocation) {
+    ro.sortedIndices = new Uint32Array(totalCount);
+    ro.distances = new Float32Array(totalCount);
+    // Clear cached partitions since component counts changed
+    ro.cachedPartitions = undefined;
+  }
 
   // Calculate distances and initialize indices for each component
   let globalIdx = 0;
@@ -333,24 +314,114 @@ function updateInstanceSorting(
     for (let i = 0; i < offset.count; i++) {
       const idx = globalIdx + i;
       // Store the global index
-      ro.sortedIndices[idx] = offset.start + i;
+      ro.sortedIndices![idx] = offset.start + i;
 
       // Calculate distance to camera
       const baseIdx = i * 3;
       const x = centers[baseIdx] - cameraPos[0];
       const y = centers[baseIdx + 1] - cameraPos[1];
       const z = centers[baseIdx + 2] - cameraPos[2];
-      ro.distances[idx] = x * x + y * y + z * z;
+      ro.distances![idx] = x * x + y * y + z * z;
     }
     globalIdx += offset.count;
   }
 
   // Sort indices by distance (furthest to nearest)
-  ro.sortedIndices.sort((a, b) => {
+  ro.sortedIndices!.sort((a, b) => {
     // If distances are equal, maintain relative order based on original indices
-    const diff = ro.distances[b] - ro.distances[a];
+    const diff = ro.distances![b] - ro.distances![a];
     return diff !== 0 ? diff : a - b;
   });
+
+  // Invalidate cached partitions since sorting has changed
+  ro.cachedPartitions = undefined;
+}
+
+/**
+ * Efficiently partitions global sorted indices into component-specific arrays in a single pass,
+ * reusing pre-allocated buffers when possible to reduce garbage collection pressure.
+ *
+ * @param sortedIndices Global sorted indices
+ * @param offsets Component offsets (assumed sorted by start)
+ * @param existingPartitions Optional pre-allocated array of Uint32Arrays to reuse
+ * @returns An array of Uint32Arrays, one per component
+ */
+function updatePartitions(
+  sortedIndices: Uint32Array,
+  offsets: ComponentOffset[],
+  existingPartitions?: Uint32Array[]
+): Uint32Array[] {
+  const result: Uint32Array[] = [];
+
+  // Pre-allocate result arrays or reuse existing ones if sizes match
+  for (let j = 0; j < offsets.length; j++) {
+    const { count } = offsets[j];
+    // If we already have a partition with the correct length, reuse it
+    if (existingPartitions && existingPartitions[j] && existingPartitions[j].length === count) {
+      result[j] = existingPartitions[j];
+    } else {
+      result[j] = new Uint32Array(count);
+    }
+  }
+
+  // Maintain an index pointer for each component
+  const writeIndices = new Uint32Array(offsets.length);
+
+  // For each global index, find which component offset it belongs to
+  for (let i = 0; i < sortedIndices.length; i++) {
+    const globalIdx = sortedIndices[i];
+
+    // Find the component this index belongs to
+    // For a small number of components, a simple linear scan is efficient
+    for (let j = 0; j < offsets.length; j++) {
+      const { start, count } = offsets[j];
+      if (globalIdx >= start && globalIdx < start + count) {
+        // Store the relative index in the appropriate partition
+        result[j][writeIndices[j]++] = globalIdx - start;
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Creates or reuses arrays of sequential indices for each component.
+ * This is used when no sorting is needed.
+ *
+ * @param offsets Component offsets
+ * @param existingPartitions Optional pre-allocated arrays to reuse
+ * @returns An array of Uint32Arrays with sequential indices
+ */
+function createSequentialIndices(
+  offsets: ComponentOffset[],
+  existingPartitions?: Uint32Array[]
+): Uint32Array[] {
+  const result: Uint32Array[] = [];
+
+  for (let j = 0; j < offsets.length; j++) {
+    const { count } = offsets[j];
+
+    // If we already have a partition with the correct length, reuse it
+    if (existingPartitions && existingPartitions[j] && existingPartitions[j].length === count) {
+      const indices = existingPartitions[j];
+      // Fill with sequential indices
+      for (let i = 0; i < count; i++) {
+        indices[i] = i;
+      }
+      result[j] = indices;
+    } else {
+      // Create a new array with sequential indices
+      const indices = new Uint32Array(count);
+      for (let i = 0; i < count; i++) {
+        indices[i] = i;
+      }
+      result[j] = indices;
+    }
+  }
+
+  return result;
 }
 
 export function getGeometryResource(resources: GeometryResources, type: keyof GeometryResources): GeometryResource {
@@ -576,9 +647,9 @@ export function SceneInner({
       const count = spec.getCount(comp);
       if (count === 0) return;
 
-      const data = buildData(comp, spec);
-      if (!data) return;
-
+      // Just allocate the array without building data
+      const floatsPerInstance = spec.getFloatsPerInstance();
+      const data = new Float32Array(count * floatsPerInstance);
       const size = getSize(data, count);
 
       let typeInfo = typeArrays.get(comp.type);
@@ -879,56 +950,62 @@ export function SceneInner({
     const cameraMoved = hasCameraMoved(camState.position, gpuRef.current.lastCameraPosition);
     gpuRef.current.lastCameraPosition = camState.position;
 
-    // Update sorting for objects that need it
+    // Update data for objects that need it
     renderObjects.forEach(ro => {
-      // Skip objects without alpha or if no changes
-      if (!ro.componentOffsets.some(offset => componentHasAlpha(components![offset.componentIdx]))) return;
-      if (!componentsChanged && !cameraMoved) return;
+      const needsSorting = ro.componentOffsets.some(offset =>
+        componentHasAlpha(components![offset.componentIdx])
+      );
 
-      // Update sorting
-      updateInstanceSorting(ro, components!, camState.position);
+      const needsInitialBuild = !ro.lastRenderCount;
+      const needsUpdate = needsSorting && (componentsChanged || cameraMoved);
+
+      // Skip if no update needed
+      if (!needsInitialBuild && !needsUpdate) return;
+
+      // Update sorting if needed
+      if (needsSorting) {
+        updateInstanceSorting(ro, components!, camState.position);
+      }
+
       ro.lastRenderCount = ro.componentOffsets.reduce((sum, offset) => sum + offset.count, 0);
 
-      // Create a new render data array
-      const newRenderData = new Float32Array(ro.cachedRenderData.length);
+      // We'll work directly with the cached render data to avoid an extra allocation and copy
+      const renderData = ro.cachedRenderData;
 
-      // For each component, filter and adjust sortedIndices, then build render data
+      // Get indices to use for building render data
+      let componentPartitions: Uint32Array[];
+      if (needsSorting && ro.sortedIndices) {
+        // Partition the sortedIndices array into component-specific arrays
+        componentPartitions = updatePartitions(ro.sortedIndices, ro.componentOffsets, ro.cachedPartitions);
+        // Store the partitions for future reuse
+        ro.cachedPartitions = componentPartitions;
+      } else {
+        // Use sequential indices if no sorting needed
+        componentPartitions = createSequentialIndices(ro.componentOffsets, ro.cachedPartitions);
+        ro.cachedPartitions = componentPartitions;
+      }
+
+      // Build render data for each component
       let dataOffset = 0;
-      for (const offset of ro.componentOffsets) {
+      for (let i = 0; i < ro.componentOffsets.length; i++) {
+        const offset = ro.componentOffsets[i];
         const component = components![offset.componentIdx];
         const count = offset.count;
         const floatsPerInstance = ro.spec.getFloatsPerInstance();
         const componentFloats = count * floatsPerInstance;
 
-        // Filter sortedIndices to only include indices for this component
-        // and adjust them to be relative to the component
-        const componentIndices = new Uint32Array(count);
-        let componentIndexCount = 0;
-
-        for (let i = 0; i < ro.sortedIndices.length; i++) {
-          const globalIdx = ro.sortedIndices[i];
-          if (globalIdx >= offset.start && globalIdx < offset.start + count) {
-            // This index belongs to this component
-            // Adjust it to be relative to the component
-            componentIndices[componentIndexCount++] = globalIdx - offset.start;
-          }
-        }
-
-        // Create a view into the new render data array for this component
+        // Create a view into the render data array for this component
         const componentView = new Float32Array(
-          newRenderData.buffer,
-          newRenderData.byteOffset + dataOffset * Float32Array.BYTES_PER_ELEMENT,
+          renderData.buffer,
+          renderData.byteOffset + dataOffset * Float32Array.BYTES_PER_ELEMENT,
           componentFloats
         );
 
         // Build render data for this component
-        ro.spec.buildRenderData(component, componentView, componentIndices);
+        ro.spec.buildRenderData(component, componentView, componentPartitions[i]);
 
         dataOffset += componentFloats;
       }
-
-      // Copy the new render data to the cached render data
-      ro.cachedRenderData.set(newRenderData);
 
       ro.pickingDataStale = true;
 
@@ -937,9 +1014,9 @@ export function SceneInner({
       device.queue.writeBuffer(
         vertexInfo.buffer,
         vertexInfo.offset,
-        ro.cachedRenderData.buffer,
-        ro.cachedRenderData.byteOffset,
-        ro.cachedRenderData.byteLength
+        renderData.buffer,
+        renderData.byteOffset,
+        renderData.byteLength
       );
     });
 
