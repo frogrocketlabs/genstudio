@@ -6,11 +6,12 @@
  *
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { SceneInner, ComponentConfig, PointCloudComponentConfig, EllipsoidComponentConfig, EllipsoidAxesComponentConfig, CuboidComponentConfig, LineBeamsComponentConfig } from './impl3d';
-import { CameraParams } from './camera3d';
+import { CameraParams, DEFAULT_CAMERA } from './camera3d';
 import { useContainerWidth } from '../utils';
 import { FPSCounter, useFPSCounter } from './fps';
+import { tw } from '../utils';
 
 /**
  * Helper function to coerce specified fields to Float32Array if they exist and are arrays
@@ -185,6 +186,48 @@ interface SceneProps {
   style?: React.CSSProperties;
 }
 
+interface DevMenuProps {
+  showFps: boolean;
+  onToggleFps: () => void;
+  onCopyCamera: () => void;
+  position: { x: number; y: number } | null;
+  onClose: () => void;
+}
+
+function DevMenu({ showFps, onToggleFps, onCopyCamera, position, onClose }: DevMenuProps) {
+  useEffect(() => {
+    if (position) {
+      document.addEventListener('click', onClose);
+      return () => document.removeEventListener('click', onClose);
+    }
+  }, [position, onClose]);
+
+  if (!position) return null;
+
+  return (
+    <div
+      className={tw("fixed bg-white border border-gray-200 shadow-lg rounded p-1 z-[1000]")}
+      style={{
+        top: position.y,
+        left: position.x,
+      }}
+    >
+      <div
+        onClick={onToggleFps}
+        className={tw("px-4 py-2 cursor-pointer whitespace-nowrap hover:bg-gray-100")}
+      >
+        {showFps ? 'Hide' : 'Show'} FPS Counter
+      </div>
+      <div
+        onClick={onCopyCamera}
+        className={tw("px-4 py-2 cursor-pointer whitespace-nowrap border-t border-gray-100 hover:bg-gray-100")}
+      >
+        Copy Camera Position
+      </div>
+    </div>
+  );
+}
+
 /**
  * A React component for rendering 3D scenes.
  *
@@ -222,16 +265,65 @@ export function Scene({
     controls = [],
 }: SceneProps) {
     const [containerRef, measuredWidth] = useContainerWidth(1);
+    const internalCameraRef = useRef({...DEFAULT_CAMERA, ...defaultCamera, ...camera});
+
+    const cameraChangeCallback = useCallback((camera) => {
+      internalCameraRef.current = camera;
+      onCameraChange?.(camera);
+    }, [onCameraChange])
+
     const dimensions = useMemo(
         () => computeCanvasDimensions(measuredWidth, width, height, aspectRatio),
         [measuredWidth, width, height, aspectRatio]
     );
 
     const { fpsDisplayRef, updateDisplay } = useFPSCounter();
-    const showFps = controls.includes('fps');
+    const [showFps, setShowFps] = useState(controls.includes('fps'));
+    const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setMenuPosition({ x: e.clientX, y: e.clientY });
+    }, []);
+
+    const handleClickOutside = useCallback(() => {
+        setMenuPosition(null);
+    }, []);
+
+    const toggleFps = useCallback(() => {
+        setShowFps(prev => !prev);
+        setMenuPosition(null);
+    }, []);
+
+    const copyCamera = useCallback(() => {
+        const currentCamera = internalCameraRef.current;
+
+        // Format the camera position as Python-compatible string
+        const formattedPosition = `[${currentCamera.position.map(n => n.toFixed(6)).join(', ')}]`;
+        const formattedTarget = `[${currentCamera.target.map(n => n.toFixed(6)).join(', ')}]`;
+        const formattedUp = `[${currentCamera.up.map(n => n.toFixed(6)).join(', ')}]`;
+
+        const pythonCode = `{
+        "position": ${formattedPosition},
+        "target": ${formattedTarget},
+        "up": ${formattedUp},
+        "fov": ${currentCamera.fov}
+    }`;
+        console.log(pythonCode);
+
+        navigator.clipboard.writeText(pythonCode)
+            .catch(err => console.error('Failed to copy camera position', err));
+
+        setMenuPosition(null);
+    }, []);
 
     return (
-        <div ref={containerRef as React.RefObject<HTMLDivElement | null>} className={className} style={{ width: '100%', position: 'relative', ...style }}>
+        <div
+            ref={containerRef as React.RefObject<HTMLDivElement | null>}
+            className={className}
+            style={{ width: '100%', position: 'relative', ...style }}
+            onContextMenu={handleContextMenu}
+        >
             {dimensions && (
                 <>
                     <SceneInner
@@ -241,10 +333,17 @@ export function Scene({
                         style={dimensions.style}
                         camera={camera}
                         defaultCamera={defaultCamera}
-                        onCameraChange={onCameraChange}
+                        onCameraChange={cameraChangeCallback}
                         onFrameRendered={updateDisplay}
                     />
                     {showFps && <FPSCounter fpsRef={fpsDisplayRef} />}
+                    <DevMenu
+                        showFps={showFps}
+                        onToggleFps={toggleFps}
+                        onCopyCamera={copyCamera}
+                        position={menuPosition}
+                        onClose={handleClickOutside}
+                    />
                 </>
             )}
         </div>
