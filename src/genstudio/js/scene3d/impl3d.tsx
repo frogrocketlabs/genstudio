@@ -80,40 +80,74 @@ const primitiveRegistry: Record<ComponentConfig['type'], PrimitiveSpec<any>> = {
 };
 
 
-const ensurePickingData = (device: GPUDevice, components: ComponentConfig[], renderObject: RenderObject) => {
-  if (!renderObject.pickingDataStale) return;
+function ensurePickingData(device: GPUDevice, components: ComponentConfig[], ro: RenderObject) {
+  if (!ro.pickingDataStale) return;
 
-  const { spec, componentOffsets } = renderObject;
+  // Get total instance count
+  const totalCount = ro.componentOffsets.reduce((sum, offset) => sum + offset.count, 0);
 
-  if (!spec) return;
+  // Create a new picking data array
+  const newPickingData = new Float32Array(ro.cachedPickingData.length);
 
-  const sortedIndices = renderObject.sortedIndices;
+  // For each component, filter and adjust sortedIndices, then build picking data
+  let dataOffset = 0;
+  for (const offset of ro.componentOffsets) {
+    const component = components[offset.componentIdx];
+    const count = offset.count;
+    const floatsPerInstance = ro.spec.getFloatsPerPicking();
+    const componentFloats = count * floatsPerInstance;
 
-  let pickingDataOffset = 0;
-  const floatsPerInstance = spec.getFloatsPerPicking();
+    // Filter sortedIndices to only include indices for this component
+    // and adjust them to be relative to the component
+    const componentIndices = new Uint32Array(count);
+    let componentIndexCount = 0;
 
-  componentOffsets.forEach(offset => {
-    const componentCount = offset.count;
-    const componentPickingData = new Float32Array(
-      renderObject.cachedPickingData.buffer,
-      renderObject.cachedPickingData.byteOffset + pickingDataOffset * Float32Array.BYTES_PER_ELEMENT,
-      componentCount * floatsPerInstance
+    // Check if sortedIndices exists before using it
+    if (ro.sortedIndices) {
+      for (let i = 0; i < totalCount; i++) {
+        const globalIdx = ro.sortedIndices[i];
+        if (globalIdx >= offset.start && globalIdx < offset.start + count) {
+          // This index belongs to this component
+          // Adjust it to be relative to the component
+          componentIndices[componentIndexCount++] = globalIdx - offset.start;
+        }
+      }
+    } else {
+      // If no sorted indices, use sequential indices
+      for (let i = 0; i < count; i++) {
+        componentIndices[componentIndexCount++] = i;
+      }
+    }
+
+    // Create a view into the new picking data array for this component
+    const componentView = new Float32Array(
+      newPickingData.buffer,
+      newPickingData.byteOffset + dataOffset * Float32Array.BYTES_PER_ELEMENT,
+      componentFloats
     );
-    spec.buildPickingData(components![offset.componentIdx], componentPickingData, offset.start, sortedIndices);
-    pickingDataOffset += componentCount * floatsPerInstance;
-  });
 
-  const pickingInfo = renderObject.pickingVertexBuffers[1] as BufferInfo;
+    // Build picking data for this component
+    const baseID = offset.start;
+    ro.spec.buildPickingData(component, componentView, baseID, componentIndices);
+
+    dataOffset += componentFloats;
+  }
+
+  // Copy the new picking data to the cached picking data
+  ro.cachedPickingData.set(newPickingData);
+
+  // Write picking data to GPU
+  const pickingInfo = ro.pickingVertexBuffers[1] as BufferInfo;
   device.queue.writeBuffer(
     pickingInfo.buffer,
     pickingInfo.offset,
-    renderObject.cachedPickingData.buffer,
-    renderObject.cachedPickingData.byteOffset,
-    renderObject.cachedPickingData.byteLength
+    ro.cachedPickingData.buffer,
+    ro.cachedPickingData.byteOffset,
+    ro.cachedPickingData.byteLength
   );
 
-  renderObject.pickingDataStale = false;
-};
+  ro.pickingDataStale = false;
+}
 
 function computeUniforms(containerWidth: number, containerHeight: number, camState: CameraState): {
   aspect: number,
@@ -276,30 +310,47 @@ function updateInstanceSorting(
   components: ComponentConfig[],
   cameraPos: glMatrix.vec3
 ): void {
-  const totalCount = ro.lastRenderCount;
+  // Skip if no alpha components
+  const hasAlphaComponents = ro.componentOffsets.some(offset =>
+    componentHasAlpha(components[offset.componentIdx])
+  );
+  if (!hasAlphaComponents) return;
 
+  // Get total instance count
+  const totalCount = ro.componentOffsets.reduce((sum, offset) => sum + offset.count, 0);
+
+  // Ensure we have arrays of the right size
   ro.sortedIndices = ensureArray(ro.sortedIndices, totalCount, Uint32Array);
   ro.distances = ensureArray(ro.distances, totalCount, Float32Array);
 
+  // Calculate distances and initialize indices for each component
   let globalIdx = 0;
-  ro.componentOffsets.forEach(offset => {
+  for (const offset of ro.componentOffsets) {
     const component = components[offset.componentIdx];
-    const componentCenters = ro.spec.getCenters(component);
+    const centers = ro.spec.getCenters(component);
 
+    // For each instance in this component
     for (let i = 0; i < offset.count; i++) {
-      ro.sortedIndices![globalIdx] = globalIdx;
+      const idx = globalIdx + i;
+      // Store the global index
+      ro.sortedIndices[idx] = offset.start + i;
 
-      const base = i * 3;
-      const dx = componentCenters[base + 0] - cameraPos[0];
-      const dy = componentCenters[base + 1] - cameraPos[1];
-      const dz = componentCenters[base + 2] - cameraPos[2];
-      ro.distances![globalIdx] = dx * dx + dy * dy + dz * dz;
-
-      globalIdx++;
+      // Calculate distance to camera
+      const baseIdx = i * 3;
+      const x = centers[baseIdx] - cameraPos[0];
+      const y = centers[baseIdx + 1] - cameraPos[1];
+      const z = centers[baseIdx + 2] - cameraPos[2];
+      ro.distances[idx] = x * x + y * y + z * z;
     }
-  });
+    globalIdx += offset.count;
+  }
 
-  ro.sortedIndices.sort((a: number, b: number) => ro.distances![b] - ro.distances![a]);
+  // Sort indices by distance (furthest to nearest)
+  ro.sortedIndices.sort((a, b) => {
+    // If distances are equal, maintain relative order based on original indices
+    const diff = ro.distances[b] - ro.distances[a];
+    return diff !== 0 ? diff : a - b;
+  });
 }
 
 export function getGeometryResource(resources: GeometryResources, type: keyof GeometryResources): GeometryResource {
@@ -662,20 +713,57 @@ export function SceneInner({
         const pickingOffset = align16(dynamicBuffers.pickingOffset);
 
         // Calculate strides
-        const renderStride = Math.ceil(info.datas[0].length / info.counts[0]) * 4;
-        const pickingStride = spec.getFloatsPerPicking() * 4;
+        const renderInstanceFloats = spec.getFloatsPerInstance();
+        const pickingInstanceFloats = spec.getFloatsPerPicking();
+        const renderStride = renderInstanceFloats * 4;
+        const pickingStride = pickingInstanceFloats * 4;
 
-        // Write render data to buffer with proper alignment
-        info.datas.forEach((data: Float32Array, i: number) => {
-          const alignedOffset = renderOffset + align16(info.offsets[i]);
-          device.queue.writeBuffer(
-            dynamicBuffers.renderBuffer,
-            alignedOffset,
-            data.buffer,
-            data.byteOffset,
-            data.byteLength
+        // Get total instance count for this type
+        const totalInstanceCount = info.totalCount;
+
+        // Try to get existing render object
+        let renderObject = renderObjectCache.current[type];
+        const needNewRenderObject = !renderObject || renderObject.lastRenderCount !== totalInstanceCount;
+
+        // Create or reuse render data arrays
+        let renderData: Float32Array;
+        let pickingData: Float32Array;
+
+        if (needNewRenderObject) {
+          renderData = new Float32Array(renderInstanceFloats * totalInstanceCount);
+          pickingData = new Float32Array(pickingInstanceFloats * totalInstanceCount);
+        } else {
+          renderData = renderObject.cachedRenderData;
+          pickingData = renderObject.cachedPickingData;
+        }
+
+        // Copy component data into combined render data array
+        let renderDataOffset = 0;
+        for (let i = 0; i < info.datas.length; i++) {
+          const componentCount = info.counts[i];
+          const componentFloats = componentCount * renderInstanceFloats;
+
+          // Create a view into the combined array for this component
+          const componentView = new Float32Array(
+            renderData.buffer,
+            renderData.byteOffset + renderDataOffset * Float32Array.BYTES_PER_ELEMENT,
+            componentFloats
           );
-        });
+
+          // Build render data directly into the view
+          spec.buildRenderData(info.components[i], componentView);
+
+          renderDataOffset += componentFloats;
+        }
+
+        // Write the combined render data to the GPU buffer
+        device.queue.writeBuffer(
+          dynamicBuffers.renderBuffer,
+          renderOffset,
+          renderData.buffer,
+          renderData.byteOffset,
+          renderData.byteLength
+        );
 
         // Get or create pipeline
         const pipeline = spec.getRenderPipeline(device, bindGroupLayout, pipelineCache);
@@ -688,7 +776,6 @@ export function SceneInner({
         // Build component offsets for this type's components
         const typeComponentOffsets: ComponentOffset[] = [];
         let typeStartIndex = globalStartIndex;
-        let totalInstanceCount = 0;
         info.indices.forEach((componentIdx, i) => {
           const componentCount = info.counts[i];
           typeComponentOffsets.push({
@@ -697,13 +784,8 @@ export function SceneInner({
             count: componentCount
           });
           typeStartIndex += componentCount;
-          totalInstanceCount += componentCount;
         });
         globalStartIndex = typeStartIndex;
-
-        // Try to get existing render object
-        let renderObject = renderObjectCache.current[type];
-        const needNewRenderObject = !renderObject || renderObject.lastRenderCount !== totalInstanceCount;
 
         // Create or update buffer info
         const bufferInfo = {
@@ -716,32 +798,6 @@ export function SceneInner({
           offset: pickingOffset,
           stride: pickingStride
         };
-
-        // Create or reuse render data arrays
-        let renderData: Float32Array;
-        let pickingData: Float32Array;
-
-        if (needNewRenderObject) {
-          renderData = new Float32Array(totalInstanceCount * spec.getFloatsPerInstance());
-          pickingData = new Float32Array(totalInstanceCount * spec.getFloatsPerPicking());
-        } else {
-          renderData = renderObject.cachedRenderData;
-          pickingData = renderObject.cachedPickingData;
-        }
-
-        // Copy component data into combined render data array
-        let renderDataOffset = 0;
-        info.datas.forEach((data, i) => {
-          const componentCount = info.counts[i];
-          const floatsPerInstance = spec.getFloatsPerInstance();
-          const componentRenderData = new Float32Array(
-            renderData.buffer,
-            renderDataOffset * Float32Array.BYTES_PER_ELEMENT,
-            componentCount * floatsPerInstance
-          );
-          componentRenderData.set(data.subarray(0, componentCount * floatsPerInstance));
-          renderDataOffset += componentCount * floatsPerInstance;
-        });
 
         if (needNewRenderObject) {
           // Create new render object with all the required resources
@@ -788,7 +844,7 @@ export function SceneInner({
         validRenderObjects.push(renderObject);
 
         // Update buffer offsets ensuring alignment
-        dynamicBuffers.renderOffset = renderOffset + align16(info.totalSize);
+        dynamicBuffers.renderOffset = renderOffset + align16(renderData.byteLength);
         dynamicBuffers.pickingOffset = pickingOffset + align16(totalInstanceCount * spec.getFloatsPerPicking() * 4);
 
       } catch (error) {
@@ -825,15 +881,55 @@ export function SceneInner({
 
     // Update sorting for objects that need it
     renderObjects.forEach(ro => {
-      const component = components![ro.componentIndex];
-      if (!componentHasAlpha(component)) return;
+      // Skip objects without alpha or if no changes
+      if (!ro.componentOffsets.some(offset => componentHasAlpha(components![offset.componentIdx]))) return;
       if (!componentsChanged && !cameraMoved) return;
 
       // Update sorting
       updateInstanceSorting(ro, components!, camState.position);
+      ro.lastRenderCount = ro.componentOffsets.reduce((sum, offset) => sum + offset.count, 0);
 
-      // Rebuild render data with new sorting
-      ro.spec.buildRenderData(component, ro.cachedRenderData, ro.sortedIndices);
+      // Create a new render data array
+      const newRenderData = new Float32Array(ro.cachedRenderData.length);
+
+      // For each component, filter and adjust sortedIndices, then build render data
+      let dataOffset = 0;
+      for (const offset of ro.componentOffsets) {
+        const component = components![offset.componentIdx];
+        const count = offset.count;
+        const floatsPerInstance = ro.spec.getFloatsPerInstance();
+        const componentFloats = count * floatsPerInstance;
+
+        // Filter sortedIndices to only include indices for this component
+        // and adjust them to be relative to the component
+        const componentIndices = new Uint32Array(count);
+        let componentIndexCount = 0;
+
+        for (let i = 0; i < ro.sortedIndices.length; i++) {
+          const globalIdx = ro.sortedIndices[i];
+          if (globalIdx >= offset.start && globalIdx < offset.start + count) {
+            // This index belongs to this component
+            // Adjust it to be relative to the component
+            componentIndices[componentIndexCount++] = globalIdx - offset.start;
+          }
+        }
+
+        // Create a view into the new render data array for this component
+        const componentView = new Float32Array(
+          newRenderData.buffer,
+          newRenderData.byteOffset + dataOffset * Float32Array.BYTES_PER_ELEMENT,
+          componentFloats
+        );
+
+        // Build render data for this component
+        ro.spec.buildRenderData(component, componentView, componentIndices);
+
+        dataOffset += componentFloats;
+      }
+
+      // Copy the new render data to the cached render data
+      ro.cachedRenderData.set(newRenderData);
+
       ro.pickingDataStale = true;
 
       // Write render data to GPU buffer
