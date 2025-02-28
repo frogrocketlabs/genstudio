@@ -8,6 +8,10 @@
     --ui-font-size: 14px;
 }
 
+html {
+    font-size: 16px;
+}
+
 .md-search-result {
     font-family: var(--sans-font);
 
@@ -71,15 +75,34 @@
 
 
 .md-sidebar {
-    .md-nav__link {
-        padding: 4px;
-        margin-top: 0;
+    .md-nav__list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px 0;
+
     }
+    .md-nav__link {
+        margin: 0;
+        padding: 0;
+        padding: 0 8px;
+    }
+    .md-nav__item {
+        border-left: 6px solid transparent;
+        margin-left: -6px;
+    }
+    .md-nav__item--active {
+
+        border-color: var(--md-typeset-a-color);
+    }
+
+    .md-nav__item--nested {
+        display: contents;
+    }
+
 
     .md-nav__link--active {
         color: var(--md-typeset-a-color);
-        background-color: color-mix(in srgb, var(--md-typeset-a-color) 15%, white);
-        border-radius: 4px;
     }
 
     .md-nav--secondary {
@@ -87,6 +110,7 @@
             color: black;
             font-weight: bold;
             background: none;
+            border: none;
         }
     }
 }

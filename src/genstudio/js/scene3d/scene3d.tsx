@@ -320,7 +320,7 @@ export function Scene({
     return (
         <div
             ref={containerRef as React.RefObject<HTMLDivElement | null>}
-            className={className}
+            className={className + ` ${tw('font-base')}`}
             style={{ width: '100%', position: 'relative', ...style }}
             onContextMenu={handleContextMenu}
         >

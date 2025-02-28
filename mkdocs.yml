@@ -22,21 +22,21 @@ theme:
   logo: false
 nav:
   - Home: index.md
-  - Quickstart: quickstart.py
-  - System Guide:
+  - Essential Reading: essential-reading.py
+  - Scene3d: scene3d.py
+  - The Basics:
     - Layouts: system-guide/layouts.py
     - State: system-guide/state.py
     - HTML with Hiccup: system-guide/html-with-hiccup.py
+    - Color: learn-more/color.py
     - JS Imports: system-guide/js-imports.py
-  - Interactivity & Animation:
-    - Sliders: interactivity/sliders.py
-    - Animating Frames: interactivity/frames.py
-    - Mouse events: interactivity/events.py
-    - Conditional Rendering: learn-more/cond.py
-    - Tailing data: interactivity/tail.py
-  - Scene3D: learn-more/scene3d.py
-  - Learn More:
-    - Working with Color: learn-more/color.py
+    - Interactivity & Animation:
+      - Sliders: interactivity/sliders.py
+      - Animating Frames: interactivity/frames.py
+      - Mouse events: interactivity/events.py
+      - Conditional Rendering: learn-more/cond.py
+      - Tailing data: interactivity/tail.py
+  - Advanced:
     - Python Event Loops: learn-more/python-event-loop.py
     - Compare with Observable Plot: learn-more/vs-observable.py
     - Save / Export Images: learn-more/save-as-image.py
