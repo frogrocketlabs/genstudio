@@ -2888,6 +2888,11 @@ Parameters
 
 - `format` (str): Module format ('esm' or 'commonjs')
 
+
+Imported JavaScript code can access:
+- `genstudio.imports`: Previous imports in the current plot (only for CommonJS imports)
+- `React`, `d3`, `html` (for hiccup) and `genstudio.api` are defined globally
+
 Examples
 {: .api .api-section }
 
