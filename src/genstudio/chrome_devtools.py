@@ -42,9 +42,10 @@ def find_chrome():
 class ChromeContext:
     """Manages a Chrome instance and provides methods for content manipulation and screenshots"""
 
-    def __init__(self, port=9222, window_size=(800, 600)):
+    def __init__(self, port=9222, window_size=(400, 400), window_scale=2):
         self.port = port
         self.window_size = window_size
+        self.window_scale = window_scale
         self.chrome_process = None
         self.ws = None
         self.cmd_id = 0
@@ -77,15 +78,20 @@ class ChromeContext:
             chrome_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
 
-        # Wait for Chrome to start
-        time.sleep(1)
+        # Wait for Chrome to start by polling every 100ms
+        start_time = time.time()
+        while True:
+            try:
+                response = urllib.request.urlopen(f"http://localhost:{self.port}/json")
+                targets = json.loads(response.read())
+                page_target = next((t for t in targets if t["type"] == "page"), None)
+                if page_target:
+                    break
+            except Exception:
+                pass
 
-        # Get WebSocket URL for the page target
-        response = urllib.request.urlopen(f"http://localhost:{self.port}/json")
-        targets = json.loads(response.read())
-        page_target = next((t for t in targets if t["type"] == "page"), None)
-        if not page_target:
-            raise RuntimeError("No page target found")
+            if time.time() - start_time > 10:  # Timeout after 10 seconds
+                raise RuntimeError("Chrome did not start in time")
 
         # Connect to the page target
         self.ws = websocket.create_connection(page_target["webSocketDebuggerUrl"])
@@ -126,6 +132,7 @@ class ChromeContext:
                     raise RuntimeError(
                         f"Chrome DevTools command failed: {response['error']}"
                     )
+
                 return response.get("result", {})
 
     def set_content(self, html):
@@ -154,6 +161,22 @@ class ChromeContext:
             },
         )
 
+        # Wait for the page to signal readiness via window.fireWhenReady promise
+        self._send_command(
+            "Runtime.evaluate",
+            {
+                "expression": """
+                (async () => {
+                    while (!window.fireWhenReady) {
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                    }
+                    return window.fireWhenReady;
+                })()
+                """,
+                "awaitPromise": True,
+            },
+        )
+
     def evaluate(self, expression, return_by_value=True):
         """Evaluate JavaScript code in the page context"""
         result = self._send_command(
@@ -173,7 +196,7 @@ class ChromeContext:
                     "y": 0,
                     "width": self.window_size[0],
                     "height": self.window_size[1],
-                    "scale": 1,
+                    "scale": self.window_scale,
                 },
             },
         )
