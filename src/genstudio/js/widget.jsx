@@ -342,6 +342,7 @@ export function StateProvider(data) {
       model.on("msg:custom", cb);
       return () => model.off("msg:custom", cb);
     }
+    window.last$state = $state; // exposed for screenshot service
   }, [model, $state]);
 
   if (!currentAst) return;
