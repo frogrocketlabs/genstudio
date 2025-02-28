@@ -1,3 +1,7 @@
+### [2025.2.4] - Feb 28, 2025
+
+- add genstudio.scene3d for webgpu-backed 3d visualizations
+
 ### [2025.2.3] - Feb 25, 2025
 
 - fix Slider init
