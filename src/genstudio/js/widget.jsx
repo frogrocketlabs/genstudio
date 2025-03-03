@@ -1,13 +1,13 @@
 import * as AnyWidgetReact from "@anywidget/react";
 import * as d3 from "d3";
 import * as mobx from "mobx";
-import * as mobxReact from "mobx-react-lite";
 import * as React from "react";
 import * as ReactDOM from "react-dom/client";
 import * as api from "./api";
 import { evaluate, createEvalEnv, collectBuffers, replaceBuffers } from "./eval";
 import { $StateContext, CONTAINER_PADDING } from "./context";
 import { useCellUnmounted, tw } from "./utils";
+import { readyState } from "./ready";
 
 const { createRender, useModelState, useModel, useExperimental } =
   AnyWidgetReact;
@@ -305,6 +305,7 @@ export function StateProvider(data) {
     const { ast, syncedKeys, imports, initialState, model } = data
     const [evalEnv, setEnv] = useState(null);
 
+
     useEffect(() => {
       createEvalEnv(imports || []).then(setEnv);
     }, [imports]);
@@ -317,6 +318,7 @@ export function StateProvider(data) {
         }),
       [evalEnv]
     );
+    window.last$state = $state;
 
     const [currentAst, setCurrentAst] = useState(null);
 
@@ -346,13 +348,9 @@ export function StateProvider(data) {
 
   useEffect(() => {
     if (currentAst) {
-      window.last$state = $state; // exposed for screenshot service
-
-      if (window.__fireWhenReady) {
-        window.__fireWhenReady()
-      }
+      data.firstRenderComplete()
     }
-  }, [currentAst])
+  }, [!!currentAst])
 
   if (!currentAst) return;
 
@@ -388,13 +386,6 @@ class ErrorBoundary extends React.Component {
 
     return this.props.children;
   }
-}
-
-// Set up global fireWhenReady promise if not already defined
-if (!window.fireWhenReady) {
-  window.fireWhenReady = new Promise(resolve => {
-    window.__fireWhenReady = resolve;
-  });
 }
 
 // Updated Viewer component with useLayoutEffect to signal readiness
@@ -533,8 +524,43 @@ function AnyWidgetApp() {
 }
 
 export const renderData = (element, data, buffers) => {
-  const root = ReactDOM.createRoot(element);
-  root.render(<Viewer {...data} buffers={buffers} />);
+  const firstRenderComplete = readyState.beginUpdate("renderData")
+
+  // If element is a string, treat it as an ID and find/create the element
+  const el = typeof element === 'string'
+    ? document.getElementById(element) || (() => {
+        const div = document.createElement('div');
+        div.id = element;
+        document.body.appendChild(div);
+        return div;
+      })()
+    : element;
+
+  if (el._ReactRoot) {
+    el._ReactRoot.unmount();
+  }
+
+  // If data is a string, parse as JSON
+  let parsedData;
+  if (typeof data === 'string') {
+    try {
+      parsedData = JSON.parse(data);
+    } catch (e) {
+      console.error('Failed to parse data as JSON:', e);
+      return;
+    }
+  } else {
+    parsedData = data;
+  }
+
+  // Convert buffers if they are base64 encoded strings
+  const decodedBuffers = Array.isArray(buffers) && typeof buffers[0] === 'string'
+    ? buffers.map(b => Uint8Array.from(atob(b), c => c.charCodeAt(0)))
+    : buffers;
+
+  const root = ReactDOM.createRoot(el);
+  el._ReactRoot = root;
+  root.render(<Viewer {...parsedData} buffers={decodedBuffers} firstRenderComplete={firstRenderComplete} />);
 };
 
 export const renderFile = (element) => {
@@ -547,3 +573,5 @@ export default {
   renderData,
   renderFile,
 };
+
+window.genStudioRenderData = renderData;

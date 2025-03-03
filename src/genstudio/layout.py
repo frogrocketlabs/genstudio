@@ -16,6 +16,11 @@ def create_parent_dir(path: str) -> None:
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
 
 
+def get_script_source():
+    with open(WIDGET_URL, "r") as js_file:
+        return js_file.read()
+
+
 def get_script_content():
     """Get the JS content either from CDN or local file"""
     if isinstance(WIDGET_URL, str):  # It's a CDN URL
@@ -25,7 +30,6 @@ def get_script_content():
         with open(WIDGET_URL, "r") as js_file:
             content = js_file.read()
 
-        # Time the encoding operation
         encoded_content = base64.b64encode(content.encode("utf-8")).decode("utf-8")
         return f"""
             const encodedContent = "{encoded_content}";
@@ -46,16 +50,16 @@ def get_style_content():
             return css_file.read()
 
 
+def encode_buffers(buffers):
+    return f"[{','.join([
+        f"'{base64.b64encode(buffer).decode('utf-8')}'" for buffer in buffers
+    ])}]"
+
+
 def html_snippet(ast, id=None):
     id = id or f"genstudio-widget-{uuid.uuid4().hex}"
     buffers = []
     data = to_json_with_initialState(ast, buffers=buffers)
-
-    # Encode buffers as base64 strings to include in HTML
-    encoded_buffers = [
-        f"'{base64.b64encode(buffer).decode('utf-8')}'" for buffer in buffers
-    ]
-    buffers_array = f"[{','.join(encoded_buffers)}]"
 
     # Get JS and CSS content
     js_content = get_script_content()
@@ -74,14 +78,13 @@ def html_snippet(ast, id=None):
 
         const container = document.getElementById('{id}');
         const jsonString = container.nextElementSibling.textContent;
-        const buffers = {buffers_array}.map(b => Uint8Array.from(atob(b), c => c.charCodeAt(0)));
         let data;
         try {{
             data = JSON.parse(jsonString);
         }} catch (error) {{
             console.error('Failed to parse JSON:', error);
         }}
-        renderData(container, data, buffers);
+        genStudioRenderData(container, data, {encode_buffers(buffers)});
     </script>
     """
 

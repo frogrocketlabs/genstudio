@@ -10,6 +10,7 @@ import React, {
   useState
 } from 'react';
 import { throttle } from '../utils';
+import { useReadySignal } from '../ready';
 
 import {
   CameraParams,
@@ -467,6 +468,7 @@ export function SceneInner({
   } | null>(null);
 
   const [isReady, setIsReady] = useState(false);
+  useReadySignal("impl3d: SceneInner", !isReady);
 
   const [internalCamera, setInternalCamera] = useState<CameraState>(() => {
       return createCameraState(defaultCamera);
@@ -1421,7 +1423,7 @@ export function SceneInner({
     <div style={{ width: '100%', border: '1px solid #ccc' }}>
         <canvas
             ref={canvasRef}
-            style={style}
+            style={{border: 'none', ...style}}
         />
     </div>
   );

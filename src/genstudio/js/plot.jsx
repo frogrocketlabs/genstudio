@@ -8,9 +8,10 @@ import { ellipse } from "./plot/ellipse";
 import { img } from "./plot/img";
 import { pixels } from "./plot/pixels"
 import { binding, flatten, tw, useContainerWidth, joinClasses } from "./utils";
+import { readyState } from "./ready";
 
 const Marks = {...Plot, ellipse, events, img, pixels}
-const { useEffect } = React
+const { useEffect, useMemo } = React
 export const DEFAULT_PLOT_OPTIONS = { inset: 10 };
 
 // Add per-mark defaults
@@ -204,6 +205,7 @@ export function PlotWrapper({spec}) {
 }
 export function PlotView ({ spec, $state }) {
         const [ref, containerWidth] = useContainerWidth()
+        const done = useMemo(() => readyState.beginUpdate("PlotView"), [])
         useEffect(() => {
             const parent = ref.current
             if (parent && (containerWidth || spec.width)) {
@@ -220,6 +222,7 @@ export function PlotView ({ spec, $state }) {
                         plot.setAttribute('class', tw(spec.className));
                     }
                     parent.appendChild(plot);
+                    done();
                 })
             }
         }, [spec, containerWidth])
