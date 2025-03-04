@@ -124,7 +124,7 @@ class ChromeContext:
             chrome_cmd.extend(
                 [
                     "--no-sandbox",
-                    "--use-angle=vulkan",
+                    "--use-angle=swiftshader",
                     "--enable-features=Vulkan",
                     "--disable-vulkan-surface",
                     "--enable-unsafe-webgpu",
