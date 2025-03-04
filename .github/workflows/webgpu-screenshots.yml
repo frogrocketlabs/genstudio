@@ -1,0 +1,68 @@
+name: WebGPU Screenshots
+
+on:
+  pull_request:
+  push:
+    branches:
+      - huebert/screenshot-state
+jobs:
+  webgpu-screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install JavaScript dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build JavaScript
+        run: yarn build
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11.5
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.8.3
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Install Chrome
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg
+          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Install FFmpeg
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Run WebGPU Screenshot Tests
+        run: |
+          # Launch Chrome with WebGPU flags for initialization
+          google-chrome --headless=new --enable-features=Vulkan,UseSkiaRenderer,WebGPU --enable-unsafe-webgpu &
+          # Wait for Chrome to initialize
+          sleep 3
+          # Run the tests
+          poetry run python -m pytest tests/python/test_webgpu_screenshots.py -v
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: webgpu-screenshots
+          path: |
+            scratch/screenshots/
+            tests/python/screenshot-artifacts/
