@@ -205,7 +205,7 @@ export function PlotWrapper({spec}) {
 }
 export function PlotView ({ spec, $state }) {
         const [ref, containerWidth] = useContainerWidth()
-        const done = useMemo(() => readyState.beginUpdate("PlotView"), [])
+        const done = useMemo(() => readyState.beginUpdate("plot/PlotWrapper"), [])
         useEffect(() => {
             const parent = ref.current
             if (parent && (containerWidth || spec.width)) {

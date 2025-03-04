@@ -267,7 +267,7 @@ export function Scene({
 }: SceneProps) {
     const [containerRef, measuredWidth] = useContainerWidth(1);
     const internalCameraRef = useRef({...DEFAULT_CAMERA, ...defaultCamera, ...camera});
-    const onReady = useMemo(() => readyState.beginUpdate("Scene3D Init"), [])
+    const onReady = useMemo(() => readyState.beginUpdate("scene3d/ready"), [])
 
     const cameraChangeCallback = useCallback((camera) => {
       internalCameraRef.current = camera;

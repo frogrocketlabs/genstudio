@@ -302,14 +302,12 @@ export function createStateStore({ initialState, syncedKeys, listeners = {}, exp
 }
 
 window.genStudioApplyState = (...updates) => {
-  console.log("Applying updates") ;
   last$state.update(...updates);
 }
 
 export function StateProvider(data) {
     const { ast, syncedKeys, imports, initialState, model } = data
     const [evalEnv, setEnv] = useState(null);
-
 
     useEffect(() => {
       createEvalEnv(imports || []).then(setEnv);
@@ -393,7 +391,6 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-// Updated Viewer component with useLayoutEffect to signal readiness
 function Viewer(data) {
   const [el, setEl] = useState();
   const elRef = useCallback((element) => element && setEl(element), [setEl]);
@@ -529,7 +526,7 @@ function AnyWidgetApp() {
 }
 
 export const renderData = (element, data, buffers) => {
-  const firstRenderComplete = readyState.beginUpdate("renderData")
+  const firstRenderComplete = readyState.beginUpdate("widget/renderData")
 
   // If element is a string, treat it as an ID and find/create the element
   const el = typeof element === 'string'

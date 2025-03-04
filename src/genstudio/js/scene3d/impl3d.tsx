@@ -10,7 +10,7 @@ import React, {
   useState
 } from 'react';
 import { throttle } from '../utils';
-import { useReadySignal, readyState } from '../ready';
+import { readyState } from '../ready';
 
 import {
   CameraParams,
@@ -194,14 +194,14 @@ function renderPass({
   depthTexture,
   renderObjects,
   uniformBindGroup,
-  onComplete
+  onRenderComplete
 }: {
   device: GPUDevice;
   context: GPUCanvasContext;
   depthTexture: GPUTexture | null;
   renderObjects: RenderObject[];
   uniformBindGroup: GPUBindGroup;
-  onComplete: () => void;
+  onRenderComplete: () => void;
 }) {
 
   function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject, 'pipeline' | 'vertexBuffers' | 'instanceCount'>> & {
@@ -259,7 +259,7 @@ function renderPass({
 
   pass.end();
   device.queue.submit([cmd.finish()]);
-  device.queue.onSubmittedWorkDone().then(() => onComplete())
+  device.queue.onSubmittedWorkDone().then(onRenderComplete)
 
 
 }
@@ -532,21 +532,9 @@ export function SceneInner({
         }
       });
 
-      // Add validation error handling
-      const errorInjectionScope = device.pushErrorScope('validation');
-
       const context = canvasRef.current.getContext('webgpu') as GPUCanvasContext;
       const format = navigator.gpu.getPreferredCanvasFormat();
-      if (!['bgra8unorm', 'rgba8unorm'].includes(format)) {
-        console.warn(`Unexpected canvas format: ${format}`);
-      }
       context.configure({ device, format, alphaMode:'premultiplied' });
-
-      // Check for any validation errors during context configuration
-      const validationError = await device.popErrorScope();
-      if (validationError) {
-        console.error('WebGPU validation error during context configuration:', validationError);
-      }
 
       const bindGroupLayout = device.createBindGroupLayout({
         entries: [{
@@ -599,12 +587,6 @@ export function SceneInner({
       initGeometryResources(device, gpuRef.current.resources);
 
       setIsReady(true);
-
-      device.lost.then((info) => {
-        console.error("WebGPU device was lost:", info);
-        // Trigger re-initialization
-        initWebGPU();
-      });
     } catch(err){
       console.error("initWebGPU error:", err);
     }
@@ -613,14 +595,11 @@ export function SceneInner({
   /******************************************************
    * B) Depth & Pick textures
    ******************************************************/
-  const createOrUpdateDepthTexture = useCallback(async () => {
+  const createOrUpdateDepthTexture = useCallback(() => {
     if(!gpuRef.current || !canvasRef.current) return;
     const { device, depthTexture } = gpuRef.current;
 
-    // Push error scope for this operation
-    const errorScope = device.pushErrorScope('validation');
-
-    try {
+    // Get the actual canvas size
         const canvas = canvasRef.current;
         const displayWidth = canvas.width;
         const displayHeight = canvas.height;
@@ -632,28 +611,13 @@ export function SceneInner({
             usage: GPUTextureUsage.RENDER_ATTACHMENT
         });
         gpuRef.current.depthTexture = dt;
-
-        // Check for validation errors
-        const error = await device.popErrorScope();
-        if (error) {
-            console.error('Error creating depth texture:', error);
-            throw error;
-        }
-    } catch (err) {
-        console.error('Failed to create/update depth texture:', err);
-        // Make sure we still pop the error scope even if an error occurs
-        await device.popErrorScope();
-    }
   }, []);
 
-  const createOrUpdatePickTextures = useCallback(async () => {
+  const createOrUpdatePickTextures = useCallback(() => {
     if(!gpuRef.current || !canvasRef.current) return;
     const { device, pickTexture, pickDepthTexture } = gpuRef.current;
 
-    // Push error scope for this operation
-    const errorScope = device.pushErrorScope('validation');
-
-    try {
+    // Get the actual canvas size
         const canvas = canvasRef.current;
         const displayWidth = canvas.width;
         const displayHeight = canvas.height;
@@ -673,18 +637,6 @@ export function SceneInner({
         });
         gpuRef.current.pickTexture = colorTex;
         gpuRef.current.pickDepthTexture = depthTex;
-
-        // Check for validation errors
-        const error = await device.popErrorScope();
-        if (error) {
-            console.error('Error creating pick textures:', error);
-            throw error;
-        }
-    } catch (err) {
-        console.error('Failed to create/update pick textures:', err);
-        // Make sure we still pop the error scope even if an error occurs
-        await device.popErrorScope();
-    }
   }, []);
 
 
@@ -1003,7 +955,7 @@ export function SceneInner({
   const renderFrame = useCallback(function renderFrameInner(camState: CameraState, components?: ComponentConfig[]) {
     if(!gpuRef.current) return;
 
-    const onComplete = readyState.beginUpdate("renderFrame")
+    const onRenderComplete = readyState.beginUpdate("impl3d/renderFrame")
 
     components = components || gpuRef.current.renderedComponents;
     const componentsChanged = gpuRef.current.renderedComponents !== components;
@@ -1094,7 +1046,7 @@ export function SceneInner({
     const uniformData = computeUniformData(containerWidth, containerHeight, camState);
     device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
-    renderPass({device, context, depthTexture, renderObjects, uniformBindGroup, onComplete})
+    renderPass({device, context, depthTexture, renderObjects, uniformBindGroup, onRenderComplete})
 
     onFrameRendered?.(performance.now());
   }, [containerWidth, containerHeight, onFrameRendered, components]);
