@@ -92,13 +92,19 @@ class ChromeContext:
     def start(self):
         """Start Chrome and connect to DevTools Protocol"""
         if self.chrome_process:
+            if self.debug:
+                print("Chrome already started, adjusting size only")
             self.set_size()
             return  # Already started
 
         chrome_path = find_chrome()
+        if self.debug:
+            print(f"Starting Chrome from: {chrome_path}")
+
         # Base Chrome flags
         chrome_cmd = [
             chrome_path,
+            "--headless=new" if not DEBUG else "",
             f"--remote-debugging-port={self.port}",
             "--remote-allow-origins=*",
             "--disable-search-engine-choice-screen",
@@ -106,8 +112,8 @@ class ChromeContext:
             "--no-first-run",
             "--disable-features=Translate",
             "--no-default-browser-check",
-            "--headless=new" if not DEBUG else "",
             "--hide-scrollbars",
+            "--no-sandbox",
             f"--window-size={self.width},{self.height or self.width}",
             "--app=data:,",
         ]
@@ -129,6 +135,9 @@ class ChromeContext:
 
         # Wait for Chrome to start by polling
         start_time = time.time()
+        if self.debug:
+            print(f"Attempting to connect to Chrome on port {self.port}")
+
         while True:
             try:
                 response = urllib.request.urlopen(f"http://localhost:{self.port}/json")
@@ -142,12 +151,15 @@ class ChromeContext:
                     None,
                 )
                 if page_target:
+                    if self.debug:
+                        print("Successfully found Chrome target")
                     break
             except Exception:
                 pass
 
-            if time.time() - start_time > 10:  # Timeout after 10 seconds
+            if time.time() - start_time > 10:
                 raise RuntimeError("Chrome did not start in time")
+
         # Connect to the page target
         self.ws = websocket.create_connection(page_target["webSocketDebuggerUrl"])
         # Enable required domains
@@ -157,6 +169,9 @@ class ChromeContext:
 
     def stop(self):
         """Stop Chrome and clean up"""
+        if self.debug:
+            print("Stopping Chrome process")
+
         if self.ws:
             self.ws.close()
             self.ws = None
@@ -166,6 +181,8 @@ class ChromeContext:
             try:
                 self.chrome_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
+                if self.debug:
+                    print("Chrome process did not terminate, forcing kill")
                 self.chrome_process.kill()
             self.chrome_process = None
 
@@ -199,55 +216,63 @@ class ChromeContext:
                 return response.get("result", {})
 
     def set_content(self, html, files=None):
-        """Serve HTML content and optional files over localhost and load it in the page
+        """Serve HTML content and optional files over localhost and load it in the page"""
+        if self.debug:
+            print("Setting content with temporary server")
+            if files:
+                print(f"Additional files to serve: {list(files.keys())}")
 
-        Args:
-            html: HTML content for index.html
-            files: Optional dict of {filename: content} to serve alongside index.html
-        """
-        # Ensure viewport size is set correctly
         self.set_size()
 
-        # Create a temporary directory and write the HTML content to an index file
         with tempfile.TemporaryDirectory() as tmp_dir:
-            # Write index.html
+            if self.debug:
+                print(f"Created temporary directory: {tmp_dir}")
+
+            # Write files
             file_path = os.path.join(tmp_dir, "index.html")
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(html)
 
-            # Write any additional files
             if files:
                 for filename, content in files.items():
                     file_path = os.path.join(tmp_dir, filename)
-                    # Create subdirectories if needed
                     os.makedirs(os.path.dirname(file_path), exist_ok=True)
                     with open(file_path, "w", encoding="utf-8") as f:
                         f.write(content)
 
-            # Set up a simple HTTP server to serve the temporary directory
+            # Set up HTTP server
             handler = partial(http.server.SimpleHTTPRequestHandler, directory=tmp_dir)
             with socketserver.TCPServer(("localhost", 0), handler) as httpd:
                 port = httpd.server_address[1]
-                # Start the server in a background thread
+                if self.debug:
+                    print(f"Started temporary server on port {port}")
+
                 server_thread = threading.Thread(
                     target=httpd.serve_forever, kwargs={"poll_interval": 0.1}
                 )
                 server_thread.daemon = True
                 server_thread.start()
 
-                # Navigate to the served page in the same tab
+                # Navigate to page
                 url = f"http://localhost:{port}/index.html"
+                if self.debug:
+                    print(f"Navigating to {url}")
                 self._send_command("Page.navigate", {"url": url})
 
                 # Wait for page load
+                if self.debug:
+                    print("Waiting for page load...")
                 while True:
                     if not self.ws:
                         raise RuntimeError("WebSocket connection lost")
                     response = json.loads(self.ws.recv())
                     if response.get("method") == "Page.loadEventFired":
+                        if self.debug:
+                            print("Page load complete")
                         break
 
-                # Shutdown the HTTP server
+                if self.debug:
+                    print("Shutting down temporary server")
                 httpd.shutdown()
                 server_thread.join()
 
@@ -299,26 +324,93 @@ class ChromeContext:
         return image_data
 
     def check_webgpu_support(self):
-        """Check if WebGPU is available in the browser"""
-        result = self.evaluate("""
-            (function() {
+        """Check if WebGPU is available and functional in the browser
+
+        Returns:
+            dict: Detailed WebGPU support information including:
+                - supported: bool indicating if WebGPU is available
+                - adapter: information about the GPU adapter if available
+                - reason: explanation if WebGPU is not supported
+                - features: list of supported features if available
+        """
+        # First load a blank page to ensure we have a proper context
+        self.set_content("<html><body></body></html>")
+
+        result = self.evaluate(
+            """
+            (async function() {
                 if (!navigator.gpu) {
-                    return { supported: false, reason: 'navigator.gpu is not available' };
+                    return {
+                        supported: false,
+                        reason: 'navigator.gpu is not available'
+                    };
                 }
 
                 try {
+                    // Request adapter with power preference to ensure we get a GPU
+                    const adapter = await navigator.gpu.requestAdapter({
+                        powerPreference: 'high-performance'
+                    });
+
+                    if (!adapter) {
+                        return {
+                            supported: false,
+                            reason: 'No WebGPU adapter found'
+                        };
+                    }
+                    // note that adapter.requestAdapterInfo doesn't always exist so we don't use it
+
+                    // Request device with basic features
+                    const device = await adapter.requestDevice({
+                        requiredFeatures: []
+                    });
+
+                    if (!device) {
+                        return {
+                            supported: false,
+                            reason: 'Failed to create WebGPU device'
+                        };
+                    }
+
+                    // Try to create a simple buffer to verify device works
+                    try {
+                        const testBuffer = device.createBuffer({
+                            size: 4,
+                            usage: GPUBufferUsage.COPY_DST
+                        });
+                        testBuffer.destroy();
+                    } catch (e) {
+                        return {
+                            supported: false,
+                            reason: 'Device creation succeeded but buffer operations failed'
+                        };
+                    }
+
                     return {
                         supported: true,
-                        info: {
-                            gpu: !!navigator.gpu,
-                            requestAdapter: typeof navigator.gpu.requestAdapter === 'function'
-                        }
+                        adapter: {
+                            name: 'WebGPU Device'
+                        },
+                        features: Array.from(adapter.features).map(f => f.toString())
                     };
                 } catch (e) {
-                    return { supported: false, reason: e.toString() };
+                    return {
+                        supported: false,
+                        reason: e.toString()
+                    };
                 }
             })()
-        """)
+        """,
+            await_promise=True,
+        )
+
+        if self.debug:
+            if result.get("supported"):
+                print("WebGPU Support:")
+                print(f"  Adapter: {result.get('adapter', {}).get('name')}")
+                print(f"  Features: {', '.join(result.get('features', []))}")
+            else:
+                print(f"WebGPU not supported: {result.get('reason')}")
 
         return result
 

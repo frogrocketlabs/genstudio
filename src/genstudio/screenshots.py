@@ -36,19 +36,28 @@ def update_state(chrome, state_updates, debug=False):
 
 def load_genstudio_html(chrome):
     if not chrome.evaluate("typeof window.genStudioRenderData === 'function'"):
+        if chrome.debug:
+            print("Loading GenStudio HTML template")
+
         files = {}
         # Handle script content based on whether WIDGET_URL is a CDN URL or local file
         if isinstance(WIDGET_URL, str):  # CDN URL
+            if chrome.debug:
+                print(f"Using CDN script from: {WIDGET_URL}")
             script_tag = f'<script type="module" src="{WIDGET_URL}"></script>'
-            files = {}
         else:  # Local file
+            if chrome.debug:
+                print(f"Loading local script from: {WIDGET_URL}")
             script_tag = '<script type="module" src="studio.js"></script>'
-            with open(WIDGET_URL, "r") as file:
-                files["studio.js"] = file.read()
             files["studio.js"] = layout.get_script_source()
+
         if isinstance(CSS_URL, str):
+            if chrome.debug:
+                print(f"Using CDN styles from: {CSS_URL}")
             style_tag = f'<style>@import "{CSS_URL}";</style>'
         else:
+            if chrome.debug:
+                print(f"Loading local styles from: {CSS_URL}")
             style_tag = '<style>@import "studio.css";</style>'
             with open(CSS_URL, "r") as file:
                 files["studio.css"] = file.read()
@@ -68,7 +77,11 @@ def load_genstudio_html(chrome):
         </html>
         """
 
+        if chrome.debug:
+            print(f"Setting content with files: {list(files.keys())}")
         chrome.set_content(html, files=files)
+    elif chrome.debug:
+        print("GenStudio already loaded, skipping initialization")
 
 
 def measure_size(chrome):
@@ -83,16 +96,24 @@ def measure_size(chrome):
                 };
             })()
         """)
-    print("setting dimensions:", dimensions)
+    if chrome.debug:
+        print(f"Measured container dimensions: {dimensions}")
     if dimensions is not None:
         chrome.set_size(dimensions["width"], dimensions["height"])
 
 
 def load_plot(chrome, plot, measure=True):
+    if chrome.debug:
+        print("Loading plot into GenStudio")
+
     load_genstudio_html(chrome)
 
     buffers = []
     data = layout.to_json_with_initialState(plot, buffers=buffers)
+
+    if chrome.debug:
+        print("Rendering plot data")
+        print(f"Buffer count: {len(buffers)}")
 
     chrome.evaluate(
         f"""
@@ -103,6 +124,7 @@ def load_plot(chrome, plot, measure=True):
          """,
         await_promise=True,
     )
+
     if measure:
         measure_size(chrome)
 
@@ -128,18 +150,24 @@ def take_screenshot(
         Path to saved screenshot if output_path provided, otherwise raw bytes
     """
     output_path = Path(output_path)
+    if debug:
+        print(f"Taking screenshot, saving to: {output_path}")
+        print(f"Window size: {width}x{height}")
+
     output_path.parent.mkdir(exist_ok=True, parents=True)
 
     with ChromeContext(width=width, height=height, debug=debug) as chrome:
         load_plot(chrome, plot)
 
-        # Apply state update if provided
         if state_update:
+            if debug:
+                print("Applying state update before screenshot")
             if not isinstance(state_update, dict):
                 raise ValueError("State update must be a dictionary")
             update_state(chrome, [state_update], debug=debug)
 
-        # Take and save screenshot
+        if debug:
+            print("Capturing screenshot")
         return chrome.screenshot(output_path)
 
 
@@ -169,6 +197,11 @@ def take_screenshot_sequence(
         List of paths to saved screenshots
     """
     output_dir = Path(output_dir)
+    if debug:
+        print("Taking screenshot sequence")
+        print(f"Output directory: {output_dir}")
+        print(f"Number of updates: {len(state_updates)}")
+
     output_dir.mkdir(exist_ok=True, parents=True)
 
     # Generate or validate filenames
@@ -187,15 +220,16 @@ def take_screenshot_sequence(
         try:
             load_plot(chrome, plot)
 
-            # Apply each state update and take screenshots
             for i, state_update in enumerate(state_updates):
+                if debug:
+                    print(f"Processing state update {i+1}/{len(state_updates)}")
                 if not isinstance(state_update, dict):
                     raise ValueError(f"State update {i} must be a dictionary")
                 update_state(chrome, [state_update])
                 path = chrome.screenshot(output_paths[i])
                 screenshots_taken.append(path)
                 if debug:
-                    print(f"Screenshot {i} taken: {path}")
+                    print(f"Saved screenshot to: {path}")
 
             return screenshots_taken
 
@@ -203,6 +237,7 @@ def take_screenshot_sequence(
             if debug:
                 import traceback
 
+                print("Screenshot sequence failed:")
                 traceback.print_exc()
             raise RuntimeError(f"Screenshot sequence failed: {e}")
 
@@ -217,7 +252,10 @@ def video(
     scale: float = 2.0,
     debug: bool = False,
 ) -> Path:
-    print(f"Recording {len(state_updates)} frames...")
+    filename = Path(filename)
+    if debug:
+        print(f"Recording video with {len(state_updates)} frames")
+
     start_time = time.time()
     """
     Capture a series of states from a plot as a movie, using the specified frame rate.
@@ -240,7 +278,7 @@ def video(
     # Set up ffmpeg command to accept PNG images from a pipe and encode to MP4
     ffmpeg_cmd = (
         f"ffmpeg {'-v error' if not debug else ''} -y -f image2pipe -vcodec png -r {fps} -i - "
-        f"-an -c:v libx264 -pix_fmt rgb24 {str(filename)}"
+        f"-an -c:v libx264 -pix_fmt yuv444p {str(filename)}"
     )
     if debug:
         print(f"Running ffmpeg command: {ffmpeg_cmd}")
@@ -282,8 +320,9 @@ def video(
 
     elapsed_time = time.time() - start_time
     actual_fps = len(state_updates) / elapsed_time
-    print(
-        f"   ...video generation took {elapsed_time:.2f} seconds ({actual_fps:.1f} fps)"
-    )
+    if debug:
+        print(
+            f"   ...video generation took {elapsed_time:.2f} seconds ({actual_fps:.1f} fps)"
+        )
 
     return filename
