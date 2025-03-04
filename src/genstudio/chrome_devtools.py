@@ -12,6 +12,7 @@ import urllib.request
 import websocket
 import http.server
 import socketserver
+import sys
 import threading
 import tempfile
 from functools import partial
@@ -94,6 +95,7 @@ class ChromeContext:
             return  # Already started
 
         chrome_path = find_chrome()
+        # Base Chrome flags
         chrome_cmd = [
             chrome_path,
             f"--remote-debugging-port={self.port}",
@@ -107,11 +109,18 @@ class ChromeContext:
             "--hide-scrollbars",
             f"--window-size={self.width},{self.height or self.width}",
             "--app=data:,",
-            # maybe need these for linux?
-            # "--enable-features=Vulkan,UseSkiaRenderer,WebGPU",
-            # "--enable-unsafe-webgpu",
-            # "--use-vulkan=native"
         ]
+
+        # Add Linux-specific WebGPU flags
+        if sys.platform.startswith("linux"):
+            chrome_cmd.extend(
+                [
+                    "--use-angle=vulkan",
+                    "--enable-features=Vulkan",
+                    "--disable-vulkan-surface",
+                    "--enable-unsafe-webgpu",
+                ]
+            )
 
         self.chrome_process = subprocess.Popen(
             chrome_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE

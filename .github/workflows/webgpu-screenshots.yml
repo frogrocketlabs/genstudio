@@ -10,6 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # - uses: NcStudios/VulkanCI@v1.0
+      - name: Install Vulkan dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan1 mesa-vulkan-drivers
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -35,26 +40,13 @@ jobs:
       - name: Install Python dependencies
         run: poetry install
 
-      - name: Install Chrome
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget gnupg
-          wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-          sudo apt-get update
-          sudo apt-get install -y google-chrome-stable
+      - uses: browser-actions/setup-chrome@v1
+      - run: chrome --version
 
-      - name: Install FFmpeg
-        run: sudo apt-get install -y ffmpeg
+      - uses: FedericoCarboni/setup-ffmpeg@v3
 
       - name: Run WebGPU Screenshot Tests
-        run: |
-          # Launch Chrome with WebGPU flags for initialization
-          google-chrome --headless=new --enable-features=Vulkan,UseSkiaRenderer,WebGPU --enable-unsafe-webgpu &
-          # Wait for Chrome to initialize
-          sleep 3
-          # Run the tests
-          poetry run python -m pytest tests/python/test_webgpu_screenshots.py -v
+        run: poetry run python -m pytest tests/python/test_webgpu_screenshots.py -v
         env:
           PYTHONPATH: ${{ github.workspace }}
 

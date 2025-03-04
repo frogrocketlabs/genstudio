@@ -51,9 +51,10 @@ def get_style_content():
 
 
 def encode_buffers(buffers):
-    return f"[{','.join([
+    buffer_entries = [
         f"'{base64.b64encode(buffer).decode('utf-8')}'" for buffer in buffers
-    ])}]"
+    ]
+    return "[" + ",".join(buffer_entries) + "]"
 
 
 def html_snippet(ast, id=None):
