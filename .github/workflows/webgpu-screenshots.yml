@@ -38,7 +38,13 @@ jobs:
           python-version: 3.11.5
           cache: 'poetry'
 
-
+      # ADD THIS STEP:
+      - name: Set up Xvfb (Virtual Framebuffer)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
 
       - run: poetry install
 
@@ -46,6 +52,7 @@ jobs:
         run: poetry run python tests/python/test_webgpu_screenshots.py
         env:
           PYTHONPATH: ${{ github.workspace }}
+          DISPLAY: :99
 
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
