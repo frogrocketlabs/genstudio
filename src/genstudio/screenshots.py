@@ -159,12 +159,9 @@ def take_screenshot(
     with ChromeContext(width=width, height=height, debug=debug) as chrome:
         load_plot(chrome, plot)
 
-        if state_update:
-            if debug:
-                print("Applying state update before screenshot")
-            if not isinstance(state_update, dict):
-                raise ValueError("State update must be a dictionary")
-            update_state(chrome, [state_update], debug=debug)
+        if debug:
+            print("Applying state update before screenshot")
+        update_state(chrome, [state_update or {}], debug=debug)
 
         if debug:
             print("Capturing screenshot")
@@ -278,7 +275,7 @@ def video(
     # Set up ffmpeg command to accept PNG images from a pipe and encode to MP4
     ffmpeg_cmd = (
         f"ffmpeg {'-v error' if not debug else ''} -y -f image2pipe -vcodec png -r {fps} -i - "
-        f"-an -c:v libx264 -pix_fmt yuv444p {str(filename)}"
+        f"-an -c:v libx264 -pix_fmt yuv420p {str(filename)}"
     )
     if debug:
         print(f"Running ffmpeg command: {ffmpeg_cmd}")
