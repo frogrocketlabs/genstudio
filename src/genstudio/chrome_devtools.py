@@ -125,8 +125,9 @@ class ChromeContext:
                 [
                     "--no-sandbox",
                     "--use-angle=swiftshader",
-                    "--enable-features=Vulkan",
+                    "--enable-features=Vulkan,CanvasOopRasterization",
                     "--disable-vulkan-surface",
+                    "--disable-software-rasterizer",
                     "--enable-unsafe-webgpu",
                 ]
             )

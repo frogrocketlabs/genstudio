@@ -38,14 +38,6 @@ jobs:
           python-version: 3.11.5
           cache: 'poetry'
 
-      # ADD THIS STEP:
-      - name: Set up Xvfb (Virtual Framebuffer)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb
-          Xvfb :99 -screen 0 1920x1080x24 &
-          echo "DISPLAY=:99" >> $GITHUB_ENV
-
       - run: poetry install
 
       - name: Run WebGPU Screenshot Tests
