@@ -11,8 +11,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: NcStudios/VulkanCI@v1.0
-
       - uses: browser-actions/setup-chrome@v1
+        with:
+          install-dependencies: true
       - run: chrome --version
 
       - uses: FedericoCarboni/setup-ffmpeg@v3
