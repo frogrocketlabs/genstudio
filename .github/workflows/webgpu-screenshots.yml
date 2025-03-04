@@ -44,7 +44,6 @@ jobs:
         run: poetry run python tests/python/test_webgpu_screenshots.py
         env:
           PYTHONPATH: ${{ github.workspace }}
-          DISPLAY: :99
 
       - name: Upload screenshots
         uses: actions/upload-artifact@v4
