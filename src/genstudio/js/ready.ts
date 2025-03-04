@@ -9,7 +9,7 @@
 
 import * as React from 'react';
 
-const DEBUG = false;
+const DEBUG = true;
 
 const log = (...body: any[]) => {
   if (!DEBUG) return;

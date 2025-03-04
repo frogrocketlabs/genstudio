@@ -10,7 +10,7 @@ import React, {
   useState
 } from 'react';
 import { throttle } from '../utils';
-import { useReadySignal } from '../ready';
+import { useReadySignal, readyState } from '../ready';
 
 import {
   CameraParams,
@@ -190,13 +190,15 @@ function renderPass({
   context,
   depthTexture,
   renderObjects,
-  uniformBindGroup
+  uniformBindGroup,
+  onComplete
 }: {
   device: GPUDevice;
   context: GPUCanvasContext;
   depthTexture: GPUTexture | null;
   renderObjects: RenderObject[];
   uniformBindGroup: GPUBindGroup;
+  onComplete: () => void;
 }) {
 
   function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject, 'pipeline' | 'vertexBuffers' | 'instanceCount'>> & {
@@ -255,6 +257,7 @@ function renderPass({
 
   pass.end();
   device.queue.submit([cmd.finish()]);
+  device.queue.onSubmittedWorkDone().then(() => onComplete())
 
 
 }
@@ -998,6 +1001,8 @@ export function SceneInner({
   const renderFrame = useCallback(function renderFrameInner(camState: CameraState, components?: ComponentConfig[]) {
     if(!gpuRef.current) return;
 
+    const onComplete = readyState.beginUpdate("renderFrame")
+
     components = components || gpuRef.current.renderedComponents;
     const componentsChanged = gpuRef.current.renderedComponents !== components;
 
@@ -1087,7 +1092,7 @@ export function SceneInner({
     const uniformData = computeUniformData(containerWidth, containerHeight, camState);
     device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
-    renderPass({device, context, depthTexture, renderObjects, uniformBindGroup})
+    renderPass({device, context, depthTexture, renderObjects, uniformBindGroup, onComplete})
 
     onFrameRendered?.(performance.now());
   }, [containerWidth, containerHeight, onFrameRendered, components]);
