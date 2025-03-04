@@ -441,6 +441,17 @@ class ChromeContext:
         # Wait a bit for dynamic content to load
         time.sleep(1)
 
+        isSoftware = self.evaluate(
+            """
+                      (async () => {
+                        const adapter = await navigator.gpu.requestAdapter({ forceSoftware: true });
+                        return adapter.requestAdapterInfo?.()
+                        })();
+                      """,
+            await_promise=True,
+        )
+        print(f"WebGPU Adapter: {'SwiftShader' if isSoftware else 'Hardware'}")
+
         # Print to PDF
         result = self._send_command(
             "Page.printToPDF",
