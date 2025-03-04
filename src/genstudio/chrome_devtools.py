@@ -124,13 +124,9 @@ class ChromeContext:
             chrome_cmd.extend(
                 [
                     "--no-sandbox",
-                    "--use-angle=swiftshader",
-                    "--enable-features=Vulkan,CanvasOopRasterization",
-                    "--disable-vulkan-surface",
-                    "--disable-software-rasterizer",
+                    "--use-angle=vulkan",
+                    "--enable-features=Vulkan",
                     "--enable-unsafe-webgpu",
-                    "--enable-logging",
-                    "--v=1",
                 ]
             )
 
