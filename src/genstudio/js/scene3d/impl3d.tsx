@@ -516,12 +516,31 @@ export function SceneInner({
         throw err;
       });
 
+      // Add error handling for uncaptured errors
+      device.addEventListener('uncapturederror', (event) => {
+        console.error('Uncaptured WebGPU error:', event.error);
+        // Log additional context about where the error occurred
+        console.error('Error source:', event.error.message);
+        if (event.error.stack) {
+          console.error('Stack trace:', event.error.stack);
+        }
+      });
+
+      // Add validation error handling
+      const errorInjectionScope = device.pushErrorScope('validation');
+
       const context = canvasRef.current.getContext('webgpu') as GPUCanvasContext;
       const format = navigator.gpu.getPreferredCanvasFormat();
       if (!['bgra8unorm', 'rgba8unorm'].includes(format)) {
         console.warn(`Unexpected canvas format: ${format}`);
       }
       context.configure({ device, format, alphaMode:'premultiplied' });
+
+      // Check for any validation errors during context configuration
+      const validationError = await device.popErrorScope();
+      if (validationError) {
+        console.error('WebGPU validation error during context configuration:', validationError);
+      }
 
       const bindGroupLayout = device.createBindGroupLayout({
         entries: [{
@@ -588,49 +607,79 @@ export function SceneInner({
   /******************************************************
    * B) Depth & Pick textures
    ******************************************************/
-  const createOrUpdateDepthTexture = useCallback(() => {
+  const createOrUpdateDepthTexture = useCallback(async () => {
     if(!gpuRef.current || !canvasRef.current) return;
     const { device, depthTexture } = gpuRef.current;
 
-    // Get the actual canvas size
-    const canvas = canvasRef.current;
-    const displayWidth = canvas.width;
-    const displayHeight = canvas.height;
+    // Push error scope for this operation
+    const errorScope = device.pushErrorScope('validation');
 
-    if(depthTexture) depthTexture.destroy();
-    const dt = device.createTexture({
-        size: [displayWidth, displayHeight],
-        format: 'depth24plus',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT
-    });
-    gpuRef.current.depthTexture = dt;
-    }, []);
+    try {
+        const canvas = canvasRef.current;
+        const displayWidth = canvas.width;
+        const displayHeight = canvas.height;
 
-  const createOrUpdatePickTextures = useCallback(() => {
+        if(depthTexture) depthTexture.destroy();
+        const dt = device.createTexture({
+            size: [displayWidth, displayHeight],
+            format: 'depth24plus',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT
+        });
+        gpuRef.current.depthTexture = dt;
+
+        // Check for validation errors
+        const error = await device.popErrorScope();
+        if (error) {
+            console.error('Error creating depth texture:', error);
+            throw error;
+        }
+    } catch (err) {
+        console.error('Failed to create/update depth texture:', err);
+        // Make sure we still pop the error scope even if an error occurs
+        await device.popErrorScope();
+    }
+  }, []);
+
+  const createOrUpdatePickTextures = useCallback(async () => {
     if(!gpuRef.current || !canvasRef.current) return;
     const { device, pickTexture, pickDepthTexture } = gpuRef.current;
 
-    // Get the actual canvas size
-    const canvas = canvasRef.current;
-    const displayWidth = canvas.width;
-    const displayHeight = canvas.height;
+    // Push error scope for this operation
+    const errorScope = device.pushErrorScope('validation');
 
-    if(pickTexture) pickTexture.destroy();
-    if(pickDepthTexture) pickDepthTexture.destroy();
+    try {
+        const canvas = canvasRef.current;
+        const displayWidth = canvas.width;
+        const displayHeight = canvas.height;
 
-    const colorTex = device.createTexture({
-        size: [displayWidth, displayHeight],
-        format: 'rgba8unorm',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC
-    });
-    const depthTex = device.createTexture({
-        size: [displayWidth, displayHeight],
-        format: 'depth24plus',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT
-    });
-    gpuRef.current.pickTexture = colorTex;
-    gpuRef.current.pickDepthTexture = depthTex;
-}, []);
+        if(pickTexture) pickTexture.destroy();
+        if(pickDepthTexture) pickDepthTexture.destroy();
+
+        const colorTex = device.createTexture({
+            size: [displayWidth, displayHeight],
+            format: 'rgba8unorm',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC
+        });
+        const depthTex = device.createTexture({
+            size: [displayWidth, displayHeight],
+            format: 'depth24plus',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT
+        });
+        gpuRef.current.pickTexture = colorTex;
+        gpuRef.current.pickDepthTexture = depthTex;
+
+        // Check for validation errors
+        const error = await device.popErrorScope();
+        if (error) {
+            console.error('Error creating pick textures:', error);
+            throw error;
+        }
+    } catch (err) {
+        console.error('Failed to create/update pick textures:', err);
+        // Make sure we still pop the error scope even if an error occurs
+        await device.popErrorScope();
+    }
+  }, []);
 
 
   type ComponentType = ComponentConfig['type'];

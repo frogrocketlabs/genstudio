@@ -291,8 +291,6 @@ def video(
 
         # Capture frames for each state update
         for i, state_update in enumerate(state_updates):
-            if not isinstance(state_update, dict):
-                raise ValueError(f"State update {i} must be a dictionary")
             result = chrome.evaluate(f"""
                 (function() {{
                     try {{
