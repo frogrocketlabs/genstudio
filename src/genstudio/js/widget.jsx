@@ -301,6 +301,11 @@ export function createStateStore({ initialState, syncedKeys, listeners = {}, exp
   return $state;
 }
 
+window.genStudioApplyState = (...updates) => {
+  console.log("Applying updates") ;
+  last$state.update(...updates);
+}
+
 export function StateProvider(data) {
     const { ast, syncedKeys, imports, initialState, model } = data
     const [evalEnv, setEnv] = useState(null);

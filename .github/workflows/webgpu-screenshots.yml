@@ -10,43 +10,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # - uses: NcStudios/VulkanCI@v1.0
-      - name: Install Vulkan dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libvulkan1 mesa-vulkan-drivers
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install JavaScript dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Build JavaScript
-        run: yarn build
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.11.5
-
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: 1.8.3
-
-      - name: Install Python dependencies
-        run: poetry install
+      - uses: NcStudios/VulkanCI@v1.0
+      # - name: Install Vulkan dependencies
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y libvulkan1 mesa-vulkan-drivers
 
       - uses: browser-actions/setup-chrome@v1
       - run: chrome --version
 
       - uses: FedericoCarboni/setup-ffmpeg@v3
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: yarn install --frozen-lockfile
+      - run: yarn build
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.13
+
+      - uses: snok/install-poetry@v1
+        with:
+          version: 1.8.3
+
+      - run: poetry install
+
       - name: Run WebGPU Screenshot Tests
-        run: poetry run python -m pytest tests/python/test_webgpu_screenshots.py -v
+        run: poetry run python tests/python/test_webgpu_screenshots.py
         env:
           PYTHONPATH: ${{ github.workspace }}
 

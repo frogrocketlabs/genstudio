@@ -58,7 +58,7 @@ def test_counter_plot():
 
     # Test single screenshot
     single_path = ARTIFACTS_DIR / "_single.png"
-    take_screenshot(counter_plot, single_path)
+    take_screenshot(counter_plot, single_path, debug=True)
     assert single_path.exists()
 
     # Test screenshot sequence

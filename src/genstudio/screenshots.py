@@ -19,7 +19,7 @@ def update_state(chrome, state_updates, debug=False):
         f"""
                 (async function() {{
                     try {{
-                        window.last$state.update(...{json.dumps(state_updates)});
+                        window.genStudioApplyState(...{json.dumps(state_updates)});
                         return window.genStudioReadyState.whenReady()
                     }} catch (e) {{
                         console.error('State update failed:', e);
@@ -130,7 +130,7 @@ def take_screenshot(
     output_path = Path(output_path)
     output_path.parent.mkdir(exist_ok=True, parents=True)
 
-    with ChromeContext(width=width, height=height) as chrome:
+    with ChromeContext(width=width, height=height, debug=debug) as chrome:
         load_plot(chrome, plot)
 
         # Apply state update if provided
@@ -183,7 +183,7 @@ def take_screenshot_sequence(
     output_paths = [output_dir / filename for filename in filenames]
     screenshots_taken = []
 
-    with ChromeContext(width=width, height=height) as chrome:
+    with ChromeContext(width=width, height=height, debug=debug) as chrome:
         try:
             load_plot(chrome, plot)
 
@@ -248,7 +248,7 @@ def video(
     # Start ffmpeg process with stdin as a pipe
     proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, shell=True)
 
-    with ChromeContext(width=width, height=height, scale=scale) as chrome:
+    with ChromeContext(width=width, height=height, scale=scale, debug=debug) as chrome:
         load_plot(chrome, plot)
 
         # Capture frames for each state update
@@ -258,7 +258,7 @@ def video(
             result = chrome.evaluate(f"""
                 (function() {{
                     try {{
-                        window.last$state.update({json.dumps(state_update)});
+                        window.genStudioApplyState({json.dumps(state_update)});
                         return 'success';
                     }} catch (e) {{
                         console.error('State update failed:', e);

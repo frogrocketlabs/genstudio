@@ -48,11 +48,12 @@ def find_chrome():
 class ChromeContext:
     """Manages a Chrome instance and provides methods for content manipulation and screenshots"""
 
-    def __init__(self, port=9222, width=400, height=None, scale=1.0):
+    def __init__(self, port=9222, width=400, height=None, scale=1.0, debug=False):
         self.port = port
         self.width = width
         self.height = height
         self.scale = scale
+        self.debug = debug
         self.chrome_process = None
         self.ws = None
         self.cmd_id = 0
@@ -152,6 +153,7 @@ class ChromeContext:
         # Enable required domains
         self._send_command("Page.enable")
         self._send_command("Runtime.enable")
+        self._send_command("Console.enable")  # Enable console events
 
     def stop(self):
         """Stop Chrome and clean up"""
@@ -180,12 +182,20 @@ class ChromeContext:
         # Wait for response with matching id
         while True:
             response = json.loads(self.ws.recv())
+
+            # Print console messages if debug is enabled
+            if self.debug and response.get("method") == "Console.messageAdded":
+                message = response["params"]["message"]
+                level = message.get("level", "log")
+                text = message.get("text", "")
+                print(f"Console {level}: {text}")
+
+            # Handle command response
             if "id" in response and response["id"] == self.cmd_id:
                 if "error" in response:
                     raise RuntimeError(
                         f"Chrome DevTools command failed: {response['error']}"
                     )
-
                 return response.get("result", {})
 
     def set_content(self, html, files=None):
