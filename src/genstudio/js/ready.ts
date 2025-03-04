@@ -8,6 +8,7 @@
  */
 
 import * as React from 'react';
+import * as globals from './globals'
 
 const DEBUG = true;
 
@@ -31,16 +32,16 @@ class ReadyStateManager {
   public beginUpdate(label: string): () => void {
     let valid = true;
     this.pendingCount++;
-    log(`[ReadyState] Begin ${label}, pending count: ${this.pendingCount}`);
+    log(`[ReadyState]${' '.repeat(this.pendingCount * 2)} 🟡 ${label}`, `pending: ${this.pendingCount}`);
     this.ensurePromise();
 
     return () => {
       if (!valid) return;
       valid = false;
       this.pendingCount--;
-      log(`[ReadyState] End ${label}, pending count: ${this.pendingCount}`);
+      log(`[ReadyState]${' '.repeat((this.pendingCount + 1) * 2)} 🟢 ${label}`, `pending: ${this.pendingCount}`);
       if (this.pendingCount === 0 && this.resolveReady) {
-        log("[ReadyState] All updates complete, resolving ready promise");
+        log(`[ReadyState]  🔥 All updates complete`);
         this.resolveReady();
         this.readyPromise = null;
         this.resolveReady = null;
@@ -123,5 +124,5 @@ export function useReadySignal(label: string, isLoading: boolean): void {
 
 // Provide access to whenReady for screenshots
 if (typeof window !== 'undefined') {
-  (window as any).genStudioReadyState = readyState;
+  globals.genstudio.whenReady = readyState.whenReady;
 }

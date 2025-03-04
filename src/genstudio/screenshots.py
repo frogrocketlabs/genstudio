@@ -19,7 +19,7 @@ def update_state(chrome, state_updates, debug=False):
         f"""
                 (async function() {{
                     try {{
-                        window.genStudioApplyState(...{json.dumps(state_updates)});
+                        window.genstudio.last$state.update(...{json.dumps(state_updates)});
                         return window.genStudioReadyState.whenReady()
                     }} catch (e) {{
                         console.error('State update failed:', e);
@@ -35,7 +35,7 @@ def update_state(chrome, state_updates, debug=False):
 
 
 def load_genstudio_html(chrome):
-    if not chrome.evaluate("typeof window.genStudioRenderData === 'function'"):
+    if not chrome.evaluate("typeof window.genstudio === 'object'"):
         if chrome.debug:
             print("Loading GenStudio HTML template")
 
@@ -118,8 +118,8 @@ def load_plot(chrome, plot, measure=True):
     chrome.evaluate(
         f"""
          (async () => {{
-           genStudioRenderData('GenStudioView', {json.dumps(data)}, {layout.encode_buffers(buffers)});
-           await window.genStudioReadyState.whenReady();
+           window.genstudio.renderData('GenStudioView', {json.dumps(data)}, {layout.encode_buffers(buffers)});
+           await window.genstudio.whenReady();
          }})()
          """,
         await_promise=True,
@@ -291,7 +291,7 @@ def video(
             result = chrome.evaluate(f"""
                 (function() {{
                     try {{
-                        window.genStudioApplyState({json.dumps(state_update)});
+                        window.genstudio.last$state.update({json.dumps(state_update)});
                         return 'success';
                     }} catch (e) {{
                         console.error('State update failed:', e);

@@ -2,13 +2,14 @@ import * as api from "./api";
 import * as Plot from "@observablehq/plot";
 import { evaluateNdarray, inferDtype } from "./binary";
 import { serializeEvent } from "./utils";
+import * as globals from "./globals"
 
 function resolveReference(path, obj) {
   return path.split(".").reduce((acc, key) => acc[key], obj);
 }
 
 // genstudio is on window so that ESM scripts can access it
-window.genstudio = {api};
+globals.genstudio.api = api;
 window.d3 = api.d3
 window.html = api.html
 window.React = api.React
@@ -22,10 +23,10 @@ export async function createEvalEnv(imports) {
   // Helper to evaluate non-ESM code in a controlled scope
   function evaluateScriptWithImports(source, scope) {
     try {
-      window.genstudio.imports = envImports;
+      globals.genstudio.imports = envImports;
       return new Function(...Object.keys(scope), source)(...Object.values(scope));
     } finally {
-      delete window.genstudio.imports;
+      delete globals.genstudio.imports;
     }
   }
 

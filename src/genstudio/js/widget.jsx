@@ -8,6 +8,7 @@ import { evaluate, createEvalEnv, collectBuffers, replaceBuffers } from "./eval"
 import { $StateContext, CONTAINER_PADDING } from "./context";
 import { useCellUnmounted, tw } from "./utils";
 import { readyState } from "./ready";
+import * as globals from "./globals"
 
 const { createRender, useModelState, useModel, useExperimental } =
   AnyWidgetReact;
@@ -20,7 +21,6 @@ function resolveRef(node, $state) {
   return node;
 }
 
-window.genstudio = {api, d3, React};
 window.moduleCache = window.moduleCache || new Map();
 
 function applyUpdate($state, init, op, payload) {
@@ -301,10 +301,6 @@ export function createStateStore({ initialState, syncedKeys, listeners = {}, exp
   return $state;
 }
 
-window.genStudioApplyState = (...updates) => {
-  last$state.update(...updates);
-}
-
 export function StateProvider(data) {
     const { ast, syncedKeys, imports, initialState, model } = data
     const [evalEnv, setEnv] = useState(null);
@@ -321,7 +317,7 @@ export function StateProvider(data) {
         }),
       [evalEnv]
     );
-    window.last$state = $state;
+    globals.genstudio.last$state = $state;
 
     const [currentAst, setCurrentAst] = useState(null);
 
@@ -576,4 +572,4 @@ export default {
   renderFile,
 };
 
-window.genStudioRenderData = renderData;
+globals.genstudio.renderData = renderData;

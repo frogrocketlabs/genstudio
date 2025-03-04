@@ -206,7 +206,7 @@ class ChromeContext:
                 message = response["params"]["message"]
                 level = message.get("level", "log")
                 text = message.get("text", "")
-                print(f"[CONSOLE.{level}]: {text}")
+                print(f"[chrome.{level}]: {text}")
 
             # Handle command response
             if "id" in response and response["id"] == self.cmd_id:

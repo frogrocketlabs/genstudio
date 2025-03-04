@@ -85,7 +85,7 @@ def html_snippet(ast, id=None):
         }} catch (error) {{
             console.error('Failed to parse JSON:', error);
         }}
-        genStudioRenderData(container, data, {encode_buffers(buffers)});
+        window.genstudio.renderData(container, data, {encode_buffers(buffers)});
     </script>
     """
 
