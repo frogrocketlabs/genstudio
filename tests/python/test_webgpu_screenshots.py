@@ -89,6 +89,13 @@ def test_counter_plot():
 
 
 if __name__ == "__main__":
+    with ChromeContext(debug=True) as chrome:
+        # Check WebGPU support
+        webgpu_status = chrome.check_webgpu_support()
+
+        # Save full GPU diagnostics
+        chrome.save_gpu_info(ARTIFACTS_DIR / "gpu_diagnostics.pdf")
+
     test_basic_screenshot()
 
     with ChromeContext(width=400, debug=True) as chrome:

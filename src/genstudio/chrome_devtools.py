@@ -16,6 +16,8 @@ import sys
 import threading
 import tempfile
 from functools import partial
+from pathlib import Path
+from typing import Union
 
 DEBUG = False
 
@@ -413,6 +415,55 @@ class ChromeContext:
                 print(f"WebGPU not supported: {result.get('reason')}")
 
         return result
+
+    def save_gpu_info(self, output_path: Union[str, Path]):
+        """Save Chrome's GPU diagnostics page (chrome://gpu) to a PDF file
+
+        Args:
+            output_path: Path where to save the PDF file
+
+        Returns:
+            Path to the saved PDF file
+        """
+        output_path = Path(output_path)
+        if self.debug:
+            print(f"Capturing GPU diagnostics to: {output_path}")
+
+        # Navigate to GPU info page
+        self._send_command("Page.navigate", {"url": "chrome://gpu"})
+
+        # Wait for page load
+        while True and self.ws:
+            response = json.loads(self.ws.recv())
+            if response.get("method") == "Page.loadEventFired":
+                break
+
+        # Wait a bit for dynamic content to load
+        time.sleep(1)
+
+        # Print to PDF
+        result = self._send_command(
+            "Page.printToPDF",
+            {
+                "landscape": False,
+                "printBackground": True,
+                "preferCSSPageSize": True,
+            },
+        )
+
+        if not result or "data" not in result:
+            raise RuntimeError("Failed to generate PDF")
+
+        # Save PDF
+        pdf_data = base64.b64decode(result["data"])
+        output_path.parent.mkdir(exist_ok=True, parents=True)
+        with open(output_path, "wb") as f:
+            f.write(pdf_data)
+
+        if self.debug:
+            print(f"GPU diagnostics saved to: {output_path}")
+
+        return output_path
 
 
 def main():
