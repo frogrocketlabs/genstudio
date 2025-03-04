@@ -129,6 +129,8 @@ class ChromeContext:
                     "--disable-vulkan-surface",
                     "--disable-software-rasterizer",
                     "--enable-unsafe-webgpu",
+                    "--enable-logging",
+                    "--v=1",
                 ]
             )
 
