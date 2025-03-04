@@ -115,7 +115,6 @@ class ChromeContext:
             "--disable-features=Translate",
             "--no-default-browser-check",
             "--hide-scrollbars",
-            "--no-sandbox",
             f"--window-size={self.width},{self.height or self.width}",
             "--app=data:,",
         ]
@@ -124,7 +123,10 @@ class ChromeContext:
         if sys.platform.startswith("linux"):
             chrome_cmd.extend(
                 [
-                    "--use-angle=vulkan",
+                    "--no-sandbox",
+                    # "--use-angle=swiftshader",
+                    "--use-vulkan=swiftshader",
+                    "--use-webgpu-adapter=swiftshader",
                     "--enable-features=Vulkan",
                     "--disable-vulkan-surface",
                     "--enable-unsafe-webgpu",
