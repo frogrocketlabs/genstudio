@@ -20,7 +20,7 @@ const log = (...body: any[]) => {
 /**
  * Global ready state manager that tracks pending async operations
  */
-class ReadyStateManager {
+export class ReadyStateManager {
   private pendingCount = 0;
   private readyPromise: Promise<void> | null = null;
   private resolveReady: (() => void) | null = null;
@@ -85,44 +85,4 @@ class ReadyStateManager {
       });
     }
   }
-}
-
-// Export a singleton instance for the application
-export const readyState = new ReadyStateManager();
-
-/**
- * Hook to track and signal readiness for React components
- *
- * @param isLoading Whether the component is currently loading
- * @returns Object with signal completion function
- */
-export function useReadySignal(label: string, isLoading: boolean): void {
-  const completeRef = React.useRef<(() => void) | null>(null);
-
-  React.useEffect(() => {
-    // Always clean up previous signal if any
-    if (completeRef.current) {
-      completeRef.current();
-      completeRef.current = null;
-    }
-
-    // If component is loading, register a new loading state
-    if (isLoading) {
-      completeRef.current = readyState.beginUpdate(label);
-    }
-
-    // Clean up on unmount
-    return () => {
-      if (completeRef.current) {
-        completeRef.current();
-        completeRef.current = null;
-      }
-    };
-  }, [isLoading]);
-
-}
-
-// Provide access to whenReady for screenshots
-if (typeof window !== 'undefined') {
-  globals.genstudio.whenReady = readyState.whenReady;
 }

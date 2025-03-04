@@ -7,7 +7,7 @@ import * as api from "./api";
 import { evaluate, createEvalEnv, collectBuffers, replaceBuffers } from "./eval";
 import { $StateContext, CONTAINER_PADDING } from "./context";
 import { useCellUnmounted, tw } from "./utils";
-import { readyState } from "./ready";
+import { ReadyStateManager } from "./ready";
 import * as globals from "./globals"
 
 const { createRender, useModelState, useModel, useExperimental } =
@@ -145,6 +145,7 @@ export function createStateStore({ initialState, syncedKeys, listeners = {}, exp
   const initialStateMap = mobx.observable.map(initialState, { deep: false });
   const computeds = {};
   const reactions = {};
+  const readyState = new ReadyStateManager();
 
   const stateHandler = {
     get(target, key) {
@@ -258,6 +259,12 @@ export function createStateStore({ initialState, syncedKeys, listeners = {}, exp
   const $state = new Proxy(
     {
       evaluate: (ast) => evaluate(ast, $state, experimental, buffers),
+      whenReady() {
+        return readyState.whenReady()
+      },
+      beginUpdate(label) {
+        return readyState.beginUpdate(label)
+      },
       __evalEnv: evalEnv,
       __backfill: function (initialState, syncedKeys) {
         syncedKeys = new Set(syncedKeys);
@@ -282,7 +289,10 @@ export function createStateStore({ initialState, syncedKeys, listeners = {}, exp
         return computeds[key].get();
       },
 
-      __updateLocal: mobx.action(applyUpdates),
+      updateWithBuffers: mobx.action((updates, buffers) => {
+        updates = replaceBuffers(updates, buffers);
+        applyUpdates(normalizeUpdates(updates));
+      }),
 
       update: (...updates) => {
         updates = applyUpdates(normalizeUpdates(updates));
@@ -317,7 +327,6 @@ export function StateProvider(data) {
         }),
       [evalEnv]
     );
-    globals.genstudio.last$state = $state;
 
     const [currentAst, setCurrentAst] = useState(null);
 
@@ -337,7 +346,7 @@ export function StateProvider(data) {
     if ($state && model) {
       const cb = (msg, buffers) => {
         if (msg.type === "update_state") {
-          $state.__updateLocal(replaceBuffers(msg.updates, buffers));
+          $state.updateWithBuffers(msg.updates, buffers);
         }
       };
       model.on("msg:custom", cb);
@@ -347,7 +356,7 @@ export function StateProvider(data) {
 
   useEffect(() => {
     if (currentAst) {
-      data.firstRenderComplete()
+      globals.genstudio.instances[data.id] = $state;
     }
   }, [!!currentAst])
 
@@ -521,8 +530,8 @@ function AnyWidgetApp() {
   return <Viewer {...data} experimental={experimental} model={model} />;
 }
 
-export const renderData = (element, data, buffers) => {
-  const firstRenderComplete = readyState.beginUpdate("widget/renderData")
+export const renderData = (element, data, buffers, id) => {
+  id = id || `widget-${Math.random().toString(36).substring(2, 15)}`;
 
   // If element is a string, treat it as an ID and find/create the element
   const el = typeof element === 'string'
@@ -558,7 +567,7 @@ export const renderData = (element, data, buffers) => {
 
   const root = ReactDOM.createRoot(el);
   el._ReactRoot = root;
-  root.render(<Viewer {...parsedData} buffers={decodedBuffers} firstRenderComplete={firstRenderComplete} />);
+  root.render(<Viewer {...parsedData} id={id} buffers={decodedBuffers} />);
 };
 
 export const renderFile = (element) => {

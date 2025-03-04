@@ -8,7 +8,6 @@ from pathlib import Path
 from genstudio.screenshots import take_screenshot, take_screenshot_sequence, video
 import genstudio.plot as Plot
 from genstudio.scene3d import Ellipsoid
-from genstudio.chrome_devtools import ChromeContext
 
 # Create an artifacts directory for screenshots
 ARTIFACTS_DIR = Path(__file__).parent / "screenshot-artifacts"
@@ -89,21 +88,13 @@ def test_counter_plot():
 
 
 if __name__ == "__main__":
-    with ChromeContext(debug=True) as chrome:
-        # Check WebGPU support
-        webgpu_status = chrome.check_webgpu_support()
+    # with ChromeContext(debug=True) as chrome:
+    #     # Check WebGPU support
+    #     webgpu_status = chrome.check_webgpu_support()
 
-        # Save full GPU diagnostics
-        chrome.save_gpu_info(ARTIFACTS_DIR / "gpu_diagnostics.pdf")
+    #     # Save full GPU diagnostics
+    #     chrome.save_gpu_info(ARTIFACTS_DIR / "gpu_diagnostics.pdf")
 
     test_basic_screenshot()
-
-    with ChromeContext(width=400, debug=True) as chrome:
-        support = chrome.check_webgpu_support()
-        if support["supported"]:
-            print("WebGPU is fully functional")
-            print(f"Using GPU: {support['adapter']['name']}")
-        else:
-            print(f"WebGPU not available: {support['reason']}")
 
     test_counter_plot()

@@ -8,7 +8,6 @@ import { ellipse } from "./plot/ellipse";
 import { img } from "./plot/img";
 import { pixels } from "./plot/pixels"
 import { binding, flatten, tw, useContainerWidth, joinClasses } from "./utils";
-import { readyState } from "./ready";
 
 const Marks = {...Plot, ellipse, events, img, pixels}
 const { useEffect, useMemo } = React
@@ -205,7 +204,7 @@ export function PlotWrapper({spec}) {
 }
 export function PlotView ({ spec, $state }) {
         const [ref, containerWidth] = useContainerWidth()
-        const done = useMemo(() => readyState.beginUpdate("plot/PlotWrapper"), [])
+        const done = useMemo(() => $state.beginUpdate("plot/PlotWrapper"), [])
         useEffect(() => {
             const parent = ref.current
             if (parent && (containerWidth || spec.width)) {

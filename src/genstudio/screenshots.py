@@ -3,6 +3,7 @@ Screenshot utilities for GenStudio plots with state change support
 """
 
 import genstudio.layout as layout
+import genstudio.widget as widget
 import json
 import time
 import subprocess  # Added import for subprocess
@@ -15,22 +16,26 @@ from genstudio.chrome_devtools import ChromeContext
 def update_state(chrome, state_updates, debug=False):
     if not isinstance(state_updates, list):
         raise AssertionError("state_updates must be a list")
+    buffers = []
+    state_data = widget.to_json(state_updates, buffers=buffers)
+
     result = chrome.evaluate(
         f"""
-                (async function() {{
-                    try {{
-                        window.genstudio.last$state.update(...{json.dumps(state_updates)});
-                        return window.genStudioReadyState.whenReady()
-                    }} catch (e) {{
-                        console.error('State update failed:', e);
-                        return 'error: ' + e.message;
-                    }}
-                }})()
-            """,
+        (async function() {{
+            try {{
+                const updates = {json.dumps(state_data)}
+                const buffers = {layout.encode_buffers(buffers)}
+                const result = window.genstudio.instances['{chrome.id}'].updateWithBuffers(updates, buffers);
+                await window.genstudio.whenReady('{chrome.id}');
+                return result;
+            }} catch (e) {{
+                console.error('State update failed:', e);
+                return 'error: ' + e.message;
+            }}
+        }})()
+    """,
         await_promise=True,
     )
-    if debug:
-        print("State update result:", result)
     return result
 
 
@@ -72,7 +77,7 @@ def load_genstudio_html(chrome):
             {script_tag}
         </head>
         <body>
-            <div id="GenStudioView"></div>
+            <div id="studio"></div>
         </body>
         </html>
         """
@@ -118,8 +123,8 @@ def load_plot(chrome, plot, measure=True):
     chrome.evaluate(
         f"""
          (async () => {{
-           window.genstudio.renderData('GenStudioView', {json.dumps(data)}, {layout.encode_buffers(buffers)});
-           await window.genstudio.whenReady();
+           window.genstudio.renderData('studio', {json.dumps(data)}, {layout.encode_buffers(buffers)}, '{chrome.id}');
+           await window.genstudio.whenReady('{chrome.id}');
          }})()
          """,
         await_promise=True,
@@ -288,17 +293,7 @@ def video(
 
         # Capture frames for each state update
         for i, state_update in enumerate(state_updates):
-            result = chrome.evaluate(f"""
-                (function() {{
-                    try {{
-                        window.genstudio.last$state.update({json.dumps(state_update)});
-                        return 'success';
-                    }} catch (e) {{
-                        console.error('State update failed:', e);
-                        return 'error: ' + e.message;
-                    }}
-                }})()
-            """)
+            result = update_state(chrome, [state_update])
             if debug:
                 print(f"State update {i} result: {result}")
             # Capture frame after update

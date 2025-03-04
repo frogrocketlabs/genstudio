@@ -7,10 +7,11 @@ import React, {
   useEffect,
   useMemo,
   useRef,
-  useState
+  useState,
+  useContext
 } from 'react';
 import { throttle } from '../utils';
-import { readyState } from '../ready';
+import {$StateContext} from '../context';
 
 import {
   CameraParams,
@@ -453,6 +454,7 @@ export function SceneInner({
   onReady
 }: SceneInnerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const $state = useContext($StateContext);
 
   // We'll store references to the GPU + other stuff in a ref object
   const gpuRef = useRef<{
@@ -955,7 +957,7 @@ export function SceneInner({
   const renderFrame = useCallback(function renderFrameInner(camState: CameraState, components?: ComponentConfig[]) {
     if(!gpuRef.current) return;
 
-    const onRenderComplete = readyState.beginUpdate("impl3d/renderFrame")
+    const onRenderComplete = $state.beginUpdate("impl3d/renderFrame")
 
     components = components || gpuRef.current.renderedComponents;
     const componentsChanged = gpuRef.current.renderedComponents !== components;

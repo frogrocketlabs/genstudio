@@ -6,13 +6,13 @@
  *
  */
 
-import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef, useContext } from 'react';
 import { SceneInner, ComponentConfig, PointCloudComponentConfig, EllipsoidComponentConfig, EllipsoidAxesComponentConfig, CuboidComponentConfig, LineBeamsComponentConfig } from './impl3d';
 import { CameraParams, DEFAULT_CAMERA } from './camera3d';
 import { useContainerWidth } from '../utils';
 import { FPSCounter, useFPSCounter } from './fps';
 import { tw } from '../utils';
-import { readyState } from '../ready';
+import {$StateContext} from "../context"
 
 /**
  * Helper function to coerce specified fields to Float32Array if they exist and are arrays
@@ -267,7 +267,8 @@ export function Scene({
 }: SceneProps) {
     const [containerRef, measuredWidth] = useContainerWidth(1);
     const internalCameraRef = useRef({...DEFAULT_CAMERA, ...defaultCamera, ...camera});
-    const onReady = useMemo(() => readyState.beginUpdate("scene3d/ready"), [])
+    const $state: any = useContext($StateContext);
+    const onReady = useMemo(() => $state.beginUpdate("scene3d/ready"), [])
 
     const cameraChangeCallback = useCallback((camera) => {
       internalCameraRef.current = camera;

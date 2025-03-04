@@ -1,3 +1,4 @@
+# chrome_devtools.py
 """
 Simple Chrome DevTools Protocol client for HTML content manipulation and screenshots
 """
@@ -19,7 +20,7 @@ from functools import partial
 from pathlib import Path
 from typing import Union
 
-DEBUG = False
+DEBUG = True
 
 
 def find_chrome():
@@ -51,6 +52,7 @@ class ChromeContext:
     """Manages a Chrome instance and provides methods for content manipulation and screenshots"""
 
     def __init__(self, port=9222, width=400, height=None, scale=1.0, debug=False):
+        self.id = f"chrome_{int(time.time() * 1000)}_{hash(str(port))}"  # Unique ID for this context
         self.port = port
         self.width = width
         self.height = height
