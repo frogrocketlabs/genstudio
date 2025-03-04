@@ -511,10 +511,16 @@ export function SceneInner({
     try {
       const adapter = await navigator.gpu.requestAdapter();
       if(!adapter) throw new Error("No GPU adapter found");
-      const device = await adapter.requestDevice();
+      const device = await adapter.requestDevice().catch(err => {
+        console.error("Failed to create WebGPU device:", err);
+        throw err;
+      });
 
       const context = canvasRef.current.getContext('webgpu') as GPUCanvasContext;
       const format = navigator.gpu.getPreferredCanvasFormat();
+      if (!['bgra8unorm', 'rgba8unorm'].includes(format)) {
+        console.warn(`Unexpected canvas format: ${format}`);
+      }
       context.configure({ device, format, alphaMode:'premultiplied' });
 
       const bindGroupLayout = device.createBindGroupLayout({
@@ -568,6 +574,12 @@ export function SceneInner({
       initGeometryResources(device, gpuRef.current.resources);
 
       setIsReady(true);
+
+      device.lost.then((info) => {
+        console.error("WebGPU device was lost:", info);
+        // Trigger re-initialization
+        initWebGPU();
+      });
     } catch(err){
       console.error("initWebGPU error:", err);
     }
