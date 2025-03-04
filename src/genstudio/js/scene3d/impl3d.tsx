@@ -61,6 +61,9 @@ export interface SceneInnerProps {
 
   /** Callback fired after each frame render with the render time in milliseconds */
   onFrameRendered?: (renderTime: number) => void;
+
+  /** Callback to fire when scene is initially ready */
+  onReady: () => void;
 }
 function initGeometryResources(device: GPUDevice, resources: GeometryResources) {
   // Create geometry for each primitive type
@@ -447,7 +450,8 @@ export function SceneInner({
   camera: controlledCamera,
   defaultCamera,
   onCameraChange,
-  onFrameRendered
+  onFrameRendered,
+  onReady
 }: SceneInnerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -472,7 +476,6 @@ export function SceneInner({
   } | null>(null);
 
   const [isReady, setIsReady] = useState(false);
-  useReadySignal("impl3d: SceneInner", !isReady);
 
   const [internalCamera, setInternalCamera] = useState<CameraState>(() => {
       return createCameraState(defaultCamera);
@@ -1466,6 +1469,7 @@ export function SceneInner({
   useEffect(() => {
     if (isReady && gpuRef.current) {
       renderFrame(activeCamera, components);
+      onReady();
     }
   }, [isReady, components, activeCamera]);
 

@@ -12,6 +12,7 @@ import { CameraParams, DEFAULT_CAMERA } from './camera3d';
 import { useContainerWidth } from '../utils';
 import { FPSCounter, useFPSCounter } from './fps';
 import { tw } from '../utils';
+import { readyState } from '../ready';
 
 /**
  * Helper function to coerce specified fields to Float32Array if they exist and are arrays
@@ -266,6 +267,7 @@ export function Scene({
 }: SceneProps) {
     const [containerRef, measuredWidth] = useContainerWidth(1);
     const internalCameraRef = useRef({...DEFAULT_CAMERA, ...defaultCamera, ...camera});
+    const onReady = useMemo(() => readyState.beginUpdate("Scene3D Init"), [])
 
     const cameraChangeCallback = useCallback((camera) => {
       internalCameraRef.current = camera;
@@ -335,6 +337,7 @@ export function Scene({
                         defaultCamera={defaultCamera}
                         onCameraChange={cameraChangeCallback}
                         onFrameRendered={updateDisplay}
+                        onReady={onReady}
                     />
                     {showFps && <FPSCounter fpsRef={fpsDisplayRef} />}
                     <DevMenu
