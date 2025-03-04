@@ -3,6 +3,31 @@
 This guide describes how to complete various tasks you'll encounter when working
 on the GenStudio codebase.
 
+## CI/CD
+
+### WebGPU Screenshot Testing
+
+GenStudio includes a GitHub Actions workflow that tests WebGPU functionality by taking screenshots of 3D scenes in headless Chrome. This ensures that WebGPU rendering continues to work as expected across different browsers and environments.
+
+The workflow:
+1. Sets up Chrome with WebGPU support in a headless environment
+2. Runs a series of tests that create 3D scenes and take screenshots
+3. Uploads the screenshots as artifacts for inspection
+
+The tests (in `tests/python/test_webgpu_screenshots.py`) include:
+- Basic WebGPU support detection
+- Rendering simple 3D primitives (Ellipsoids)
+- Testing state updates and animations
+
+To run these tests locally:
+
+```bash
+# Ensure Chrome is installed
+poetry run python tests/python/test_webgpu_screenshots.py
+# Or run via pytest
+poetry run pytest tests/python/test_webgpu_screenshots.py -v
+```
+
 ### Jupyter notes
 
 A typical and recommended workflow is to use genstudio with VS Code's Python Interactive Window. With the VS Code jupyter extension installed, one can use ordinary `.py` files with `# %%` markers to separate cells, then run the `Jupyter: Run Current Cell` command. Results, including plots, will be rendered with VS Code.

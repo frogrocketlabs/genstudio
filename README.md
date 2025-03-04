@@ -22,6 +22,15 @@ For detailed usage instructions and examples, refer to the [Gen Studio User Guid
 
 Run `yarn watch` to compile the JavaScript bundle.
 
+### CI Workflows
+
+The project has several CI workflows:
+- **Tests**: Runs JavaScript and Python unit tests
+- **WebGPU Screenshots**: Tests 3D WebGPU rendering capabilities by capturing screenshots in headless Chrome
+- **Docs**: Builds and deploys documentation
+- **Pyright**: Runs type checking for Python code
+- **Ruff**: Runs code formatting and linting
+
 ## Credits
 
 - [AnyWidget](https://github.com/manzt/anywidget) provides a nice Python<>JavaScript widget API
