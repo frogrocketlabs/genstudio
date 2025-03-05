@@ -1,3 +1,7 @@
+### [2025.3.1] - Mar 05, 2025
+
+- Video export via `plot.save_video(...)` and image series via `plot.save_images(...)`, with support for arbitrary `state_updates` to control what is rendered for each frame.
+
 ### [2025.2.4] - Feb 28, 2025
 
 - add genstudio.scene3d for webgpu-backed 3d visualizations
