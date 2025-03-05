@@ -3,10 +3,9 @@ import uuid
 from pathlib import Path
 from typing import Any, List, Optional, Self, Tuple, Union, cast
 
-from genstudio.chrome_devtools import ChromeContext
 from genstudio.env import CONFIG
 from genstudio.html import html_page, html_snippet
-from genstudio.screenshots import load_plot, take_screenshot, update_state
+import genstudio.screenshots as screenshots
 from genstudio.widget import Widget, WidgetState
 
 
@@ -119,7 +118,7 @@ class LayoutItem:
             scale: Scale factor for rendering (default: 1.0)
             debug: Whether to print debug information
         """
-        take_screenshot(
+        screenshots.save_image(
             self, path, width=width, height=height, scale=scale, debug=debug
         )
         print(f"Image saved to {path}")
@@ -129,14 +128,7 @@ class LayoutItem:
 
         create_parent_dir(path)
 
-        with ChromeContext(
-            width=width, height=height or width, scale=scale, debug=debug
-        ) as chrome:
-            load_plot(chrome, self)
-            update_state(chrome, [{}])
-            chrome.save_image(str(path) + "_before.png")
-            chrome.save_pdf(path)
-            chrome.save_image(str(path) + "_after.png")
+        screenshots.save_pdf(self, width=width, height=height, scale=scale, debug=debug)
         print(f"PDF saved to {path}")
 
     def save_images(
@@ -163,9 +155,8 @@ class LayoutItem:
         Returns:
             List of paths to saved screenshots
         """
-        from genstudio.screenshots import take_screenshot_sequence
 
-        return take_screenshot_sequence(
+        return screenshots.save_images(
             self,
             state_updates,
             output_dir=output_dir,
@@ -200,9 +191,7 @@ class LayoutItem:
         Returns:
             Path to the saved video file
         """
-        from genstudio.screenshots import video
-
-        return video(
+        return screenshots.save_video(
             self,
             state_updates,
             filename,

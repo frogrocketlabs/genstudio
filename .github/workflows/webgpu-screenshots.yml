@@ -39,7 +39,7 @@ jobs:
       - run: poetry install
 
       - name: Run WebGPU Screenshot Tests
-        run: poetry run python tests/python/test_webgpu_screenshots.py
+        run: poetry run python tests/python/test_screenshots.py
         env:
           PYTHONPATH: ${{ github.workspace }}
 

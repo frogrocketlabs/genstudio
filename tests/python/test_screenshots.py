@@ -9,7 +9,7 @@ import genstudio.plot as Plot
 from genstudio.scene3d import Ellipsoid
 
 # Create an artifacts directory for screenshots
-ARTIFACTS_DIR = Path("./scratch/screenshots/test_webgpu/")
+ARTIFACTS_DIR = Path("./scratch/screenshots/test/")
 ARTIFACTS_DIR.mkdir(exist_ok=True, parents=True)
 
 
@@ -85,6 +85,10 @@ def test_counter_plot():
 
 
 if __name__ == "__main__":
+    test_basic_screenshot()
+
+    test_counter_plot()
+
     with ChromeContext(debug=True) as chrome:
         # Check WebGPU support
         webgpu_status = chrome.check_webgpu_support()
@@ -93,6 +97,3 @@ if __name__ == "__main__":
         chrome.save_gpu_info(ARTIFACTS_DIR / "gpu_diagnostics.pdf")
     with ChromeContext(debug=True) as chrome:
         chrome.check_webgpu_support()
-    test_basic_screenshot()
-
-    test_counter_plot()

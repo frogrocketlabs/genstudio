@@ -342,12 +342,10 @@ class ChromeContext:
 
         return result.get("result", {}).get("value")
 
-    def save_image(self, path=None):
-        """Take a screenshot of the page, automatically sizing to content height"""
+    def capture_image(self) -> bytes:
+        """Capture a screenshot of the page as PNG bytes."""
         if self.debug:
-            print(
-                f"[chrome_devtools.py] Taking screenshot {f'to {path}' if path else '(returning bytes)'}"
-            )
+            print("[chrome_devtools.py] Capturing image")
 
         result = self._send_command(
             "Page.captureScreenshot",
@@ -365,21 +363,14 @@ class ChromeContext:
         )
 
         if not result or "data" not in result:
-            raise RuntimeError("Failed to capture screenshot")
+            raise RuntimeError("Failed to capture image")
 
-        image_data = base64.b64decode(result["data"])
-        if path:
-            with open(path, "wb") as f:
-                f.write(image_data)
-            return path
-        return image_data
+        return base64.b64decode(result["data"])
 
-    def save_pdf(self, path=None):
-        """Save the current page as a PDF file"""
+    def capture_pdf(self) -> bytes:
+        """Capture the current page as a PDF and return PDF bytes."""
         if self.debug:
-            print(
-                f"[chrome_devtools.py] Saving PDF {f'to {path}' if path else '(returning bytes)'}"
-            )
+            print("[chrome_devtools.py] Capturing PDF")
 
         # Set page width to 8.5 inches and calculate proportional height
         paper_width = 8.5
@@ -402,14 +393,9 @@ class ChromeContext:
         )
 
         if not result or "data" not in result:
-            raise RuntimeError("Failed to generate PDF")
+            raise RuntimeError("Failed to capture PDF")
 
-        pdf_data = base64.b64decode(result["data"])
-        if path:
-            with open(path, "wb") as f:
-                f.write(pdf_data)
-            return path
-        return pdf_data
+        return base64.b64decode(result["data"])
 
     def check_webgpu_support(self):
         """Check if WebGPU is available and functional in the browser
@@ -570,9 +556,17 @@ def main():
         # Load content served via localhost
         chrome.load_html(html)
 
-        chrome.save_image("./scratch/screenshots/webgpu_test_red.png")
+        # Capture and save red background image
+        image_data = chrome.capture_image()
+        Path("./scratch/screenshots").mkdir(exist_ok=True, parents=True)
+        with open("./scratch/screenshots/webgpu_test_red.png", "wb") as f:
+            f.write(image_data)
+
+        # Change to green and capture again
         chrome.evaluate('document.body.style.background = "green"; "changed!"')
-        chrome.save_image("./scratch/screenshots/webgpu_test_green.png")
+        image_data = chrome.capture_image()
+        with open("./scratch/screenshots/webgpu_test_green.png", "wb") as f:
+            f.write(image_data)
 
 
 if __name__ == "__main__":
