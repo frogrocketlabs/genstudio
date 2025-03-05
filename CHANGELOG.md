@@ -1,3 +1,7 @@
+### [2025.3.3] - Mar 06, 2025
+
+- add plot.save_pdf(...) with webgpu/scene3d support
+
 ### [2025.3.2] - Mar 05, 2025
 
 - do not create new datas arrays in collectTypeData
