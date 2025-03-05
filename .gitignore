@@ -8,5 +8,3 @@ basic_plot.*
 docs/overrides/stylesheets/tailwind.css
 *.env
 *.js.map
-**/screenshot-artifacts/**
-chrome-headless-shell

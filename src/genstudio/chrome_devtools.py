@@ -10,7 +10,7 @@ import base64
 import shutil
 import subprocess
 import urllib.request
-import websocket
+from websockets.sync.client import connect
 import http.server
 import socketserver
 import sys
@@ -217,7 +217,7 @@ class ChromeContext:
                 raise RuntimeError("Chrome did not start in time")
 
         # Connect to the page target
-        self.ws = websocket.create_connection(page_target["webSocketDebuggerUrl"])
+        self.ws = connect(page_target["webSocketDebuggerUrl"])
         # Enable required domains
         self._send_command("Page.enable")
         self._send_command("Runtime.enable")
@@ -329,8 +329,7 @@ class ChromeContext:
         Args:
             expression: JavaScript expression to evaluate
             return_by_value: Whether to return the result by value
-            wait_for_ready: Whether to wait for readyState after evaluation
-                          (useful for state updates that trigger async rendering)
+            await_promise: Whether to wait for promise resolution
         """
         result = self._send_command(
             "Runtime.evaluate",
