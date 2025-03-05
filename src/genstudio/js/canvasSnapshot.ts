@@ -119,21 +119,26 @@ export async function createCanvasOverlays(): Promise<void> {
       // Create a properly sized array for the actual pixel data
       const pixelData = new Uint8Array(width * height * bytesPerPixel);
 
-      // Copy rows from the aligned buffer to the pixel data array
+      // Create Uint32Array views of both buffers for faster processing
+      // Need to account for the aligned buffer stride
+      const mappedU32 = new Uint32Array(mappedData.buffer);
+      const pixelU32 = new Uint32Array(pixelData.buffer);
+
+      // Copy rows accounting for alignment
       for (let row = 0; row < height; row++) {
-        const sourceOffset = row * bytesPerRow;
-        const targetOffset = row * width * bytesPerPixel;
+        const sourceRowStart = (row * bytesPerRow) / 4; // Divide by 4 since we're using 32-bit values
+        const targetRowStart = row * width;
 
-        // Copy and swap R and B channels
         for (let x = 0; x < width; x++) {
-          const srcPixelOffset = sourceOffset + x * bytesPerPixel;
-          const dstPixelOffset = targetOffset + x * bytesPerPixel;
+          const pixel = mappedU32[sourceRowStart + x];
+          // Extract BGRA channels
+          const b = (pixel & 0x000000FF);
+          const g = (pixel & 0x0000FF00);
+          const r = (pixel & 0x00FF0000);
+          const a = (pixel & 0xFF000000);
 
-          // BGRA to RGBA conversion
-          pixelData[dstPixelOffset + 0] = mappedData[srcPixelOffset + 2]; // R <- B
-          pixelData[dstPixelOffset + 1] = mappedData[srcPixelOffset + 1]; // G <- G
-          pixelData[dstPixelOffset + 2] = mappedData[srcPixelOffset + 0]; // B <- R
-          pixelData[dstPixelOffset + 3] = mappedData[srcPixelOffset + 3]; // A <- A
+          // Reassemble as RGBA
+          pixelU32[targetRowStart + x] = (a) | (b << 16) | (g) | (r >> 16);
         }
       }
 
