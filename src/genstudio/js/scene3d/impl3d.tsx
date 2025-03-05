@@ -12,9 +12,7 @@ import React, {
 } from 'react';
 import { throttle } from '../utils';
 import {$StateContext} from '../context';
-import { useCanvasSnapshot, createCanvasOverlays, removeCanvasOverlays } from '../canvasSnapshot';
-import {genstudio} from '../globals'
-
+import { useCanvasSnapshot } from '../canvasSnapshot';
 import {
   CameraParams,
   CameraState,
@@ -38,10 +36,6 @@ import { BufferInfo, GeometryResources, GeometryResource, PrimitiveSpec, RenderO
 function align16(value: number): number {
   return Math.ceil(value / 16) * 16;
 }
-
-// Register screenshot hooks for canvas management
-genstudio.beforePDFHooks.set('scene3d_canvas_snapshot', createCanvasOverlays);
-genstudio.afterPDFHooks.set('scene3d_canvas_snapshot', removeCanvasOverlays);
 
 export interface SceneInnerProps {
   /** Array of 3D components to render in the scene */
@@ -503,12 +497,15 @@ export function SceneInner({
     }
   }, [activeCamera, controlledCamera, onCameraChange]);
 
-  // Create a render callback for the snapshot system
+  // Create a render callback for the canvas snapshot system
+  // This function is called during PDF export to render the 3D scene to a texture
+  // that can be captured as a static image
   const renderToTexture = useCallback((targetTexture: GPUTexture, depthTexture: GPUTexture | null) => {
     if (!gpuRef.current) return;
     const { device, uniformBindGroup, renderObjects } = gpuRef.current;
 
     // Reuse the existing renderPass function with a temporary context
+    // that redirects rendering to our snapshot texture
     const tempContext = {
       getCurrentTexture: () => targetTexture
     } as GPUCanvasContext;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo } from 'react';
-
+import {genstudio} from './globals'
 interface CanvasRegistry {
   [key: string]: {
     canvas: HTMLCanvasElement;
@@ -53,8 +53,11 @@ export function useCanvasSnapshot(
 }
 
 /**
- * Creates image overlays for all registered canvases using WebGPU
+ * Creates image overlays for all registered WebGPU canvases
+ * Used before PDF export to capture 3D content as static images
+ *
  * @returns Promise that resolves when all overlays are created
+ * @throws May throw if WebGPU operations fail
  */
 export async function createCanvasOverlays(): Promise<void> {
   await Promise.all(
@@ -174,16 +177,23 @@ export async function createCanvasOverlays(): Promise<void> {
       const parentContainer = canvas.parentElement;
       if (!parentContainer) {
         console.warn('[canvasSnapshot] Canvas has no parent element');
-        return;
-      }
-      parentContainer.appendChild(img);
-      entry.overlay = img;
+          return;
+        }
+        parentContainer.appendChild(img);
+        entry.overlay = img;
 
-      // Cleanup
-      readbackBuffer.unmap();
-      readbackBuffer.destroy();
-      texture.destroy();
-      depthTexture.destroy();
+      // Cleanup resources safely
+      try {
+        if (readbackBuffer) {
+          readbackBuffer.unmap();
+          readbackBuffer.destroy();
+        }
+        if (texture) texture.destroy();
+        if (depthTexture) depthTexture.destroy();
+      } catch (err) {
+        console.warn('[canvasSnapshot] Error during resource cleanup:', err);
+        // Continue despite cleanup errors - the overlay was already created
+      }
 
       console.log("[canvasSnapshot] Overlay created successfully");
     })
@@ -191,7 +201,8 @@ export async function createCanvasOverlays(): Promise<void> {
 }
 
 /**
- * Removes all canvas overlays
+ * Removes all canvas overlays created for PDF export
+ * Called after PDF generation is complete to restore interactive WebGPU canvases
  */
 export function removeCanvasOverlays(): void {
   Object.values(activeCanvases).forEach(entry => {
@@ -201,3 +212,9 @@ export function removeCanvasOverlays(): void {
     }
   });
 }
+
+// Register PDF export hooks for WebGPU canvas snapshot
+// Before PDF: Creates static image overlays of 3D canvases for PDF capture
+// After PDF: Removes overlays to restore interactive 3D content
+genstudio.beforePDFHooks.set('scene3d_canvas_snapshot', createCanvasOverlays);
+genstudio.afterPDFHooks.set('scene3d_canvas_snapshot', removeCanvasOverlays);

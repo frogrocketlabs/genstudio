@@ -256,8 +256,13 @@ class StudioContext(ChromeContext):
             Path to saved PDF if output_path provided, otherwise PDF bytes
         """
 
+        # Trigger WebGPU canvas capture for 3D content before PDF generation
         self.evaluate(f"window.genstudio.beforePDF('{self.id}');", await_promise=True)
+
+        # Capture the PDF content (including static images of 3D canvases)
         pdf_bytes = self.capture_pdf()
+
+        # Cleanup and restore interactive 3D content
         self.evaluate(f"window.genstudio.afterPDF('{self.id}');", await_promise=True)
 
         if output_path:
