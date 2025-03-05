@@ -645,7 +645,6 @@ export function SceneInner({
   type ComponentType = ComponentConfig['type'];
 
   interface TypeInfo {
-    datas: Float32Array[];
     offsets: number[];
     counts: number[];
     indices: number[];
@@ -655,11 +654,9 @@ export function SceneInner({
   }
 
   // Update the collectTypeData function signature
-  function collectTypeData(
-    components: ComponentConfig[],
-    buildData: (component: ComponentConfig, spec: PrimitiveSpec<any>) => Float32Array,
-    getSize: (data: Float32Array, count: number) => number
-  ): Map<ComponentType, TypeInfo> {
+  function collectTypeData(components: ComponentConfig[]): Map<ComponentType, TypeInfo> {
+
+
     const typeArrays = new Map<ComponentType, TypeInfo>();
 
     // Single pass through components
@@ -672,8 +669,7 @@ export function SceneInner({
 
       // Just allocate the array without building data
       const floatsPerInstance = spec.getFloatsPerInstance();
-      const data = new Float32Array(count * floatsPerInstance);
-      const size = getSize(data, count);
+      const size = count * floatsPerInstance * 4; // 4 bytes per float
 
       let typeInfo = typeArrays.get(comp.type);
       if (!typeInfo) {
@@ -683,8 +679,7 @@ export function SceneInner({
           components: [],
           indices: [],
           offsets: [],
-          counts: [],
-          datas: []
+          counts: []
         };
         typeArrays.set(comp.type, typeInfo);
       }
@@ -693,7 +688,6 @@ export function SceneInner({
       typeInfo.indices.push(idx);
       typeInfo.offsets.push(typeInfo.totalSize);
       typeInfo.counts.push(count);
-      typeInfo.datas.push(data);
       typeInfo.totalCount += count;
       typeInfo.totalSize += size;
     });
@@ -717,32 +711,7 @@ export function SceneInner({
     let globalStartIndex = 0;
 
     // Collect render data using helper
-    const typeArrays = collectTypeData(
-      components,
-      (comp, spec) => {
-        const count = spec.getCount(comp);
-        if (count === 0) return new Float32Array(0);
-
-        // Try to reuse existing render object's array
-        const existingRO = renderObjectCache.current[comp.type];
-
-        // Check if we can reuse the cached render data array
-        if (existingRO?.lastRenderCount === count) {
-          // Reuse existing array but update the data
-          spec.buildRenderData(comp, existingRO.cachedRenderData);
-          return existingRO.cachedRenderData;
-        }
-
-        // Create new array if no matching cache found or count changed
-        const array = new Float32Array(count * spec.getFloatsPerInstance());
-        spec.buildRenderData(comp, array);
-        return array;
-      },
-      (data, count) => {
-        const stride = Math.ceil(data.length / count) * 4;
-        return stride * count;
-      }
-    );
+    const typeArrays = collectTypeData(components);
 
     // Calculate total buffer sizes needed
     let totalRenderSize = 0;
@@ -833,7 +802,7 @@ export function SceneInner({
 
         // Copy component data into combined render data array
         let renderDataOffset = 0;
-        for (let i = 0; i < info.datas.length; i++) {
+        for (let i = 0; i < info.counts.length; i++) {
           const componentCount = info.counts[i];
           const componentFloats = componentCount * renderInstanceFloats;
 

@@ -158,11 +158,9 @@ from genstudio.plot import js
             js("$state.point_size"),
         ],
     ]
-    | Scene3D.PointCloud(
+    | Scene3D.Cuboid(
         # Use pre-generated frames based on animation state
-        positions=js(
-            "$state.frames[$state.frame % 30].slice(0, $state.num_particles*3)"
-        ),
+        centers=js("$state.frames[$state.frame % 30].slice(0, $state.num_particles*3)"),
         colors=js("$state.colors.slice(0, $state.num_particles* 3 )"),
         size=js("$state.point_size"),
         alpha=js("$state.alpha"),

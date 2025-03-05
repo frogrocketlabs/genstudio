@@ -18,7 +18,7 @@ import {$StateContext} from "../context"
  * Helper function to coerce specified fields to Float32Array if they exist and are arrays
  */
 function coerceFloat32Fields<T extends object>(obj: T, fields: (keyof T)[]): T {
-  const result = { ...obj };
+  const result = obj;
   for (const field of fields) {
     const value = obj[field];
     if (Array.isArray(value)) {

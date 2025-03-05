@@ -152,17 +152,17 @@ export function evaluate(node, $state, experimental, buffers) {
     case "js_ref":
       return resolveReference(node.path, api);
     case "js_source":
+      // Cache the compiled function on the node
+      if (!node.__compiledFn) {
+        let source = node.expression ? `return ${node.value.trimLeft()}` : node.value;
+        source = node.params?.length ? source.replace(/%(\d+)/g, (_, i) => `p${parseInt(i) - 1}`) : source;
 
-      let source = node.expression ? `return ${node.value.trimLeft()}` : node.value;
-      source = node.params?.length ? source.replace(/%(\d+)/g, (_, i) => `p${parseInt(i) - 1}`) : source;
+        const paramNames = (node.params || []).map((_, i) => `p${i}`);
+        node.__compiledFn = new Function("$state", ...Object.keys($state.__evalEnv), ...paramNames, source);
+      }
 
       const paramValues = (node.params || []).map((p) => evaluate(p, $state, experimental, buffers));
-      const paramNames = paramValues.map((_, i) => `p${i}`);
-
-      const env = $state.__evalEnv;
-
-      return new Function("$state", ...Object.keys(env),   ...paramNames, source)(
-                           $state,  ...Object.values(env), ...paramValues);
+      return node.__compiledFn($state, ...Object.values($state.__evalEnv), ...paramValues);
     case "datetime":
       return new Date(node.value);
     case "ref":
