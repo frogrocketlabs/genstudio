@@ -135,6 +135,7 @@ def take_screenshot(
     state_update: Optional[Dict] = None,
     width: int = 400,
     height: int | None = None,
+    scale: float = 1.0,
     debug: bool = False,
 ) -> Union[Path, bytes]:
     """
@@ -156,10 +157,10 @@ def take_screenshot(
 
     output_path.parent.mkdir(exist_ok=True, parents=True)
 
-    with ChromeContext(width=width, height=height, debug=debug) as chrome:
+    with ChromeContext(width=width, height=height, scale=scale, debug=debug) as chrome:
         load_plot(chrome, plot)
         update_state(chrome, [state_update or {}])
-        return chrome.screenshot(output_path)
+        return chrome.save_image(output_path)
 
 
 def take_screenshot_sequence(
@@ -170,6 +171,7 @@ def take_screenshot_sequence(
     filename_base: Optional[str] = "screenshot",
     width: int = 800,
     height: int | None = None,
+    scale: float = 1.0,
     debug: bool = False,
 ) -> List[Path]:
     """
@@ -207,7 +209,7 @@ def take_screenshot_sequence(
     output_paths = [output_dir / filename for filename in filenames]
     screenshots_taken = []
 
-    with ChromeContext(width=width, height=height, debug=debug) as chrome:
+    with ChromeContext(width=width, height=height, scale=scale, debug=debug) as chrome:
         try:
             load_plot(chrome, plot)
 
@@ -217,7 +219,7 @@ def take_screenshot_sequence(
                 if not isinstance(state_update, dict):
                     raise ValueError(f"State update {i} must be a dictionary")
                 update_state(chrome, [state_update])
-                path = chrome.screenshot(output_paths[i])
+                path = chrome.save_image(output_paths[i])
                 screenshots_taken.append(path)
                 if debug:
                     print(f"Saved screenshot to: {path}")
@@ -286,7 +288,7 @@ def video(
             if debug:
                 print(f"State update {i} result: {result}")
             # Capture frame after update
-            frame_bytes = chrome.screenshot(None)
+            frame_bytes = chrome.save_image(None)
             if proc.stdin:
                 proc.stdin.write(frame_bytes)
                 if debug:

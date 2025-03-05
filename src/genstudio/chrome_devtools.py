@@ -342,7 +342,7 @@ class ChromeContext:
 
         return result.get("result", {}).get("value")
 
-    def screenshot(self, path=None):
+    def save_image(self, path=None):
         """Take a screenshot of the page, automatically sizing to content height"""
         if self.debug:
             print(
@@ -373,6 +373,43 @@ class ChromeContext:
                 f.write(image_data)
             return path
         return image_data
+
+    def save_pdf(self, path=None):
+        """Save the current page as a PDF file"""
+        if self.debug:
+            print(
+                f"[chrome_devtools.py] Saving PDF {f'to {path}' if path else '(returning bytes)'}"
+            )
+
+        # Set page width to 8.5 inches and calculate proportional height
+        paper_width = 8.5
+        paper_height = paper_width * ((self.height or self.width) / self.width)
+
+        result = self._send_command(
+            "Page.printToPDF",
+            {
+                "landscape": False,
+                "printBackground": True,
+                "preferCSSPageSize": True,
+                "scale": self.scale,
+                "paperWidth": paper_width,
+                "paperHeight": paper_height,
+                "marginTop": 0,
+                "marginBottom": 0,
+                "marginLeft": 0,
+                "marginRight": 0,
+            },
+        )
+
+        if not result or "data" not in result:
+            raise RuntimeError("Failed to generate PDF")
+
+        pdf_data = base64.b64decode(result["data"])
+        if path:
+            with open(path, "wb") as f:
+                f.write(pdf_data)
+            return path
+        return pdf_data
 
     def check_webgpu_support(self):
         """Check if WebGPU is available and functional in the browser
@@ -533,9 +570,9 @@ def main():
         # Load content served via localhost
         chrome.load_html(html)
 
-        chrome.screenshot("./scratch/screenshots/webgpu_test_red.png")
+        chrome.save_image("./scratch/screenshots/webgpu_test_red.png")
         chrome.evaluate('document.body.style.background = "green"; "changed!"')
-        chrome.screenshot("./scratch/screenshots/webgpu_test_green.png")
+        chrome.save_image("./scratch/screenshots/webgpu_test_green.png")
 
 
 if __name__ == "__main__":

@@ -111,3 +111,15 @@ if shutil.which("ffmpeg"):
     print(f"Video saved to: {video_path}")
 else:
     print("Note: Video creation requires ffmpeg to be installed")
+
+# %% [markdown]
+# ### PDF Export
+#
+# PDF export is supported via `.save_pdf(...)`, however note that 3d canvas elements will not render.
+
+# %%
+# Create and display a simple scatter plot
+dots = Plot.dot([[1, 1], [2, 2], [3, 3]], r=10, fill="steelblue")
+dots.save_pdf(str(output_dir / "scatter.pdf"), scale=2, width=400)
+
+print(f"PDF saved to: {output_dir / 'scatter.pdf'}")

@@ -1,12 +1,13 @@
 import os
 import uuid
-from typing import Any, List, Optional, Tuple, Union, Self
-
-from genstudio.env import CONFIG
-from genstudio.html import html_snippet, html_page
-from genstudio.widget import Widget, WidgetState
-from genstudio.screenshots import take_screenshot
 from pathlib import Path
+from typing import Any, List, Optional, Self, Tuple, Union, cast
+
+from genstudio.chrome_devtools import ChromeContext
+from genstudio.env import CONFIG
+from genstudio.html import html_page, html_snippet
+from genstudio.screenshots import load_plot, take_screenshot, update_state
+from genstudio.widget import Widget, WidgetState
 
 
 def create_parent_dir(path: str) -> None:
@@ -93,7 +94,7 @@ class LayoutItem:
         """
         if self._widget is None:
             self._widget = Widget(self)
-        return self._widget
+        return cast(Widget, self._widget)
 
     def repr(self) -> Widget | HTML:
         display_as = self._display_as or CONFIG["display_as"]
@@ -108,16 +109,35 @@ class LayoutItem:
             f.write(html_page(self.for_json()))
         print(f"HTML saved to {path}")
 
-    def save_image(self, path, width=500, height=None, debug=False):
+    def save_image(self, path, width=500, height=None, scale: float = 1.0, debug=False):
         """Save the plot as an image using headless browser.
 
         Args:
             path: Path to save the image to
             width: Width of the image in pixels (default: 500)
             height: Optional height of the image in pixels
+            scale: Scale factor for rendering (default: 1.0)
+            debug: Whether to print debug information
         """
-        take_screenshot(self, path, width=width, height=height, debug=debug)
+        take_screenshot(
+            self, path, width=width, height=height, scale=scale, debug=debug
+        )
         print(f"Image saved to {path}")
+
+    def save_pdf(self, path, width=500, height=None, scale: float = 1.0, debug=False):
+        """Save the plot as a PDF using headless Chrome."""
+
+        create_parent_dir(path)
+
+        with ChromeContext(
+            width=width, height=height or width, scale=scale, debug=debug
+        ) as chrome:
+            load_plot(chrome, self)
+            update_state(chrome, [{}])
+            chrome.save_image(str(path) + "_before.png")
+            chrome.save_pdf(path)
+            chrome.save_image(str(path) + "_after.png")
+        print(f"PDF saved to {path}")
 
     def save_images(
         self,
