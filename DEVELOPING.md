@@ -1,30 +1,73 @@
 # Developer's Guide
 
-This guide describes how to complete various tasks you'll encounter when working
-on the GenStudio codebase.
+This guide covers common development tasks in the GenStudio codebase.
 
 ## CI/CD
 
-### WebGPU Screenshot Testing
+### Screenshots and Videos
 
-GenStudio includes a GitHub Actions workflow that tests WebGPU functionality by taking screenshots of 3D scenes in headless Chrome. This ensures that WebGPU rendering continues to work as expected across different browsers and environments.
+GenStudio uses a headless Chrome browser to generate screenshots and videos of visualizations. This is used for:
+
+- Testing visualizations
+- Documentation examples
+- State transition animations
+- 3D scene captures
+
+#### Implementation
+
+Two main modules handle this functionality:
+
+- `genstudio.screenshots`: Screenshot and video generation API
+- `genstudio.chrome_devtools`: Chrome DevTools Protocol client
+
+Available operations:
+- Single screenshots
+- Multiple screenshots with state updates
+- Video generation (requires ffmpeg)
+- Custom dimensions and scaling
+
+#### Example Usage
+
+```python
+from genstudio.screenshots import take_screenshot, take_screenshot_sequence, video
+
+# Take a screenshot
+take_screenshot(plot, "output.png", width=800)
+
+# Take multiple screenshots with different states
+take_screenshot_sequence(
+    plot,
+    state_updates=[{"param": i} for i in range(5)],
+    output_dir="./screenshots"
+)
+
+# Create a video
+video(
+    plot,
+    state_updates=[{"t": i/30} for i in range(60)],
+    filename="animation.mp4",
+    fps=30
+)
+```
+
+### WebGPU Testing
+
+The GitHub Actions workflow tests WebGPU rendering by taking screenshots of 3D scenes. This verifies that WebGPU works correctly across environments.
 
 The workflow:
-1. Sets up Chrome with WebGPU support in a headless environment
-2. Runs a series of tests that create 3D scenes and take screenshots
-3. Uploads the screenshots as artifacts for inspection
+1. Runs Chrome with WebGPU in headless mode
+2. Creates and captures 3D scenes
+3. Saves screenshots as artifacts
 
-The tests (in `tests/python/test_webgpu_screenshots.py`) include:
-- Basic WebGPU support detection
-- Rendering simple 3D primitives (Ellipsoids)
-- Testing state updates and animations
+Tests in `tests/python/test_webgpu_screenshots.py` check:
+- WebGPU availability
+- 3D primitive rendering
+- State updates
+- Animations
 
-To run these tests locally:
+Run tests locally:
 
 ```bash
-# Ensure Chrome is installed
-poetry run python tests/python/test_webgpu_screenshots.py
-# Or run via pytest
 poetry run pytest tests/python/test_webgpu_screenshots.py -v
 ```
 
@@ -40,32 +83,25 @@ If jupyter has trouble finding a kernel to evaluate from, you can install one (u
 poetry run python -m ipykernel install --user --name genstudio
 ```
 
-### Commit Hooks
+### Pre-commit Hooks
 
-We use [pre-commit](https://pre-commit.com/) to manage a series of git
-pre-commit hooks for the project; for example, each time you commit code, the
-hooks will make sure that your python is formatted properly. If your code isn't,
-the hook will format it, so when you try to commit the second time you'll get
-past the hook.
+Pre-commit hooks ensure code consistency. They run automatically on each commit to format Python code and perform other checks.
 
-All hooks are defined in `.pre-commit-config.yaml`. To install these hooks,
-install `pre-commit` if you don't yet have it. I prefer using
-[pipx](https://github.com/pipxproject/pipx) so that `pre-commit` stays globally
-available.
+Setup:
 
+1. Install pre-commit:
 ```bash
 pipx install pre-commit
 ```
 
-Then install the hooks with this command:
-
+2. Install hooks:
 ```bash
 pre-commit install
 ```
 
-Now they'll run on every commit. If you want to run them manually, run the
-following command:
-
+Run hooks manually:
 ```bash
 pre-commit run --all-files
 ```
+
+Hooks are configured in `.pre-commit-config.yaml`.

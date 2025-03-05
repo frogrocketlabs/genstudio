@@ -4,17 +4,12 @@ Tests for WebGPU screenshot functionality in GenStudio
 
 import shutil
 from pathlib import Path
-from genstudio.screenshots import (
-    ChromeContext,
-    take_screenshot,
-    take_screenshot_sequence,
-    video,
-)
+from genstudio.screenshots import ChromeContext
 import genstudio.plot as Plot
 from genstudio.scene3d import Ellipsoid
 
 # Create an artifacts directory for screenshots
-ARTIFACTS_DIR = Path(__file__).parent / "screenshot-artifacts"
+ARTIFACTS_DIR = Path("./scratch/screenshots/test_webgpu/")
 ARTIFACTS_DIR.mkdir(exist_ok=True, parents=True)
 
 
@@ -27,7 +22,7 @@ def test_basic_screenshot():
     ]
 
     screenshot_path = ARTIFACTS_DIR / "test.png"
-    take_screenshot(test_plot, screenshot_path, debug=True)
+    test_plot.save_image(screenshot_path, debug=True)
 
     assert screenshot_path.exists()
     assert screenshot_path.stat().st_size > 0
@@ -62,12 +57,11 @@ def test_counter_plot():
 
     # Test single screenshot
     single_path = ARTIFACTS_DIR / "_single.png"
-    take_screenshot(counter_plot, single_path, debug=True)
+    counter_plot.save_image(single_path, debug=True)
     assert single_path.exists()
 
     # Test screenshot sequence
-    paths = take_screenshot_sequence(
-        counter_plot,
+    paths = counter_plot.save_images(
         state_updates=[{"count": i} for i in [1, 10, 100]],
         output_dir=ARTIFACTS_DIR,
         filename_base="count",
@@ -80,8 +74,7 @@ def test_counter_plot():
     # Test video generation
     if shutil.which("ffmpeg"):
         video_path = ARTIFACTS_DIR / "counter.mp4"
-        video(
-            counter_plot,
+        counter_plot.save_video(
             state_updates=[{"count": i} for i in range(30)],  # 30 frames
             filename=video_path,
             fps=12,

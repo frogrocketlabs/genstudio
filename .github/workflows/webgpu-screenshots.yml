@@ -50,4 +50,3 @@ jobs:
           name: webgpu-screenshots
           path: |
             scratch/screenshots/
-            tests/python/screenshot-artifacts/

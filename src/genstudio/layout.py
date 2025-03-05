@@ -6,6 +6,7 @@ from genstudio.env import CONFIG
 from genstudio.html import html_snippet, html_page
 from genstudio.widget import Widget, WidgetState
 from genstudio.screenshots import take_screenshot
+from pathlib import Path
 
 
 def create_parent_dir(path: str) -> None:
@@ -107,7 +108,7 @@ class LayoutItem:
             f.write(html_page(self.for_json()))
         print(f"HTML saved to {path}")
 
-    def save_image(self, path, width=500, height=None):
+    def save_image(self, path, width=500, height=None, debug=False):
         """Save the plot as an image using headless browser.
 
         Args:
@@ -115,8 +116,82 @@ class LayoutItem:
             width: Width of the image in pixels (default: 500)
             height: Optional height of the image in pixels
         """
-        take_screenshot(self, path, width=width, height=height)
+        take_screenshot(self, path, width=width, height=height, debug=debug)
         print(f"Image saved to {path}")
+
+    def save_images(
+        self,
+        state_updates,
+        output_dir: Union[str, Path] = "./scratch/screenshots",
+        filenames=None,
+        filename_base="screenshot",
+        width=500,
+        height=None,
+        debug=False,
+    ):
+        """Save a sequence of images for different states of the plot.
+
+        Args:
+            state_updates: List of state updates to apply before each screenshot
+            output_dir: Directory to save screenshots (default: "./scratch/screenshots")
+            filenames: Optional list of filenames for each screenshot. Must match length of state_updates
+            filename_base: Base name for auto-generating filenames if filenames not provided
+            width: Width of the images in pixels (default: 500)
+            height: Optional height of the images in pixels
+            debug: Whether to print debug information
+
+        Returns:
+            List of paths to saved screenshots
+        """
+        from genstudio.screenshots import take_screenshot_sequence
+
+        return take_screenshot_sequence(
+            self,
+            state_updates,
+            output_dir=output_dir,
+            filenames=filenames,
+            filename_base=filename_base,
+            width=width,
+            height=height,
+            debug=debug,
+        )
+
+    def save_video(
+        self,
+        state_updates,
+        filename,
+        fps=24,
+        width=500,
+        height=None,
+        scale=2.0,
+        debug=False,
+    ):
+        """Save a sequence of states as a video.
+
+        Args:
+            state_updates: List of state updates to apply sequentially
+            filename: Path where the resulting video will be saved
+            fps: Frame rate (frames per second) for the video (default: 24)
+            width: Width of the video in pixels (default: 500)
+            height: Optional height of the video in pixels
+            scale: Scale factor for rendering (default: 2.0)
+            debug: Whether to print debug information
+
+        Returns:
+            Path to the saved video file
+        """
+        from genstudio.screenshots import video
+
+        return video(
+            self,
+            state_updates,
+            filename,
+            fps=fps,
+            width=width,
+            height=height,
+            scale=scale,
+            debug=debug,
+        )
 
     def reset(self, other: "LayoutItem") -> None:
         """
