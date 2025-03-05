@@ -1,6 +1,6 @@
 import datetime
 import uuid
-from typing import Any, Callable, Dict, Iterable, List, Optional, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union, Tuple
 from types import SimpleNamespace
 
 import anywidget
@@ -8,7 +8,7 @@ import numpy as np
 import traitlets
 import warnings
 
-from genstudio.util import CONFIG, WIDGET_URL, CSS_URL
+from genstudio.env import CONFIG, WIDGET_URL, CSS_URL
 
 
 class SubscriptableNamespace(SimpleNamespace):
@@ -199,7 +199,7 @@ def to_json_with_initialState(
     ast: Any,
     widget: "Widget | None" = None,
     buffers: List[bytes | bytearray | memoryview] | None = None,
-):
+) -> Union[Any, Tuple[Any, List[bytes | bytearray | memoryview]]]:
     collected_state = CollectedState()
     ast = to_json(ast, widget=widget, collected_state=collected_state, buffers=buffers)
 
@@ -217,6 +217,8 @@ def to_json_with_initialState(
 
     if widget is not None:
         widget.state.init_state(collected_state)
+    if buffers is not None:
+        return json, buffers
     return json
 
 

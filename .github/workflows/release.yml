@@ -91,8 +91,8 @@ jobs:
           JSDELIVR_CSS_URL="${NPM_BASE}/widget.css"
 
           # Update both URLs in the source
-          sed -i "s|CDN_SCRIPT_URL = None|CDN_SCRIPT_URL = \"${JSDELIVR_JS_URL}\"|" src/genstudio/util.py
-          sed -i "s|CDN_CSS_URL = None|CDN_CSS_URL = \"${JSDELIVR_CSS_URL}\"|" src/genstudio/util.py
+          sed -i "s|CDN_SCRIPT_URL = None|CDN_SCRIPT_URL = \"${JSDELIVR_JS_URL}\"|" src/genstudio/env.py
+          sed -i "s|CDN_CSS_URL = None|CDN_CSS_URL = \"${JSDELIVR_CSS_URL}\"|" src/genstudio/env.py
 
           poetry build
 

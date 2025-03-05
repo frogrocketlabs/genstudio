@@ -20,7 +20,7 @@ from functools import partial
 from pathlib import Path
 from typing import Union
 
-DEBUG = True
+DEBUG = False
 
 
 def find_chrome():
@@ -46,6 +46,41 @@ def find_chrome():
             return path
 
     raise FileNotFoundError("Could not find Chrome. Please install Chrome.")
+
+
+def check_chrome_version(chrome_path):
+    """Check if Chrome version supports the new headless mode
+
+    Args:
+        chrome_path: Path to Chrome executable
+
+    Returns:
+        tuple: (version_number, is_supported)
+
+    Raises:
+        RuntimeError: If Chrome version cannot be determined
+    """
+    try:
+        # Run Chrome with --version flag
+        output = subprocess.check_output(
+            [chrome_path, "--version"],
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+        )
+        # Parse version string (format like "Google Chrome 112.0.5615.49")
+        version_str = output.strip()
+        # Extract version number
+        import re
+
+        match = re.search(r"(\d+)\.", version_str)
+        if not match:
+            raise RuntimeError(f"Could not parse Chrome version from: {version_str}")
+
+        major_version = int(match.group(1))
+        # New headless mode (--headless=new) was introduced in Chrome 109
+        return major_version, major_version >= 109
+    except subprocess.SubprocessError as e:
+        raise RuntimeError(f"Failed to determine Chrome version: {e}")
 
 
 class ChromeContext:
@@ -97,18 +132,34 @@ class ChromeContext:
         """Start Chrome and connect to DevTools Protocol"""
         if self.chrome_process:
             if self.debug:
-                print("Chrome already started, adjusting size only")
+                print(
+                    "[chrome_devtools.py] Chrome already started, adjusting size only"
+                )
             self.set_size()
             return  # Already started
 
         chrome_path = find_chrome()
         if self.debug:
-            print(f"Starting Chrome from: {chrome_path}")
+            print(f"[chrome_devtools.py] Starting Chrome from: {chrome_path}")
+
+        # Check Chrome version for headless mode compatibility
+        version, supports_new_headless = check_chrome_version(chrome_path)
+        if self.debug:
+            print(f"[chrome_devtools.py] Chrome version: {version}")
+            if not supports_new_headless:
+                print(
+                    f"[chrome_devtools.py] Warning: Chrome version {version} does not support the new headless mode (--headless=new). Using legacy headless mode instead"
+                )
+
+        # Determine appropriate headless flag
+        headless_flag = ""
+        if not DEBUG:
+            headless_flag = "--headless=new" if supports_new_headless else "--headless"
 
         # Base Chrome flags
         chrome_cmd = [
             chrome_path,
-            "--headless=new" if not DEBUG else "",
+            headless_flag,
             f"--remote-debugging-port={self.port}",
             "--remote-allow-origins=*",
             "--disable-search-engine-choice-screen",
@@ -139,7 +190,9 @@ class ChromeContext:
         # Wait for Chrome to start by polling
         start_time = time.time()
         if self.debug:
-            print(f"Attempting to connect to Chrome on port {self.port}")
+            print(
+                f"[chrome_devtools.py] Attempting to connect to Chrome on port {self.port}"
+            )
 
         while True:
             try:
@@ -155,7 +208,7 @@ class ChromeContext:
                 )
                 if page_target:
                     if self.debug:
-                        print("Successfully found Chrome target")
+                        print("[chrome_devtools.py] Successfully found Chrome target")
                     break
             except Exception:
                 pass
@@ -173,7 +226,7 @@ class ChromeContext:
     def stop(self):
         """Stop Chrome and clean up"""
         if self.debug:
-            print("Stopping Chrome process")
+            print("[chrome_devtools.py] Stopping Chrome process")
 
         if self.ws:
             self.ws.close()
@@ -185,7 +238,9 @@ class ChromeContext:
                 self.chrome_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 if self.debug:
-                    print("Chrome process did not terminate, forcing kill")
+                    print(
+                        "[chrome_devtools.py] Chrome process did not terminate, forcing kill"
+                    )
                 self.chrome_process.kill()
             self.chrome_process = None
 
@@ -218,19 +273,12 @@ class ChromeContext:
                     )
                 return response.get("result", {})
 
-    def set_content(self, html, files=None):
+    def load_html(self, html, files=None):
         """Serve HTML content and optional files over localhost and load it in the page"""
-        if self.debug:
-            print("Setting content with temporary server")
-            if files:
-                print(f"Additional files to serve: {list(files.keys())}")
 
         self.set_size()
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            if self.debug:
-                print(f"Created temporary directory: {tmp_dir}")
-
             # Write files
             file_path = os.path.join(tmp_dir, "index.html")
             with open(file_path, "w", encoding="utf-8") as f:
@@ -248,8 +296,9 @@ class ChromeContext:
             with socketserver.TCPServer(("localhost", 0), handler) as httpd:
                 port = httpd.server_address[1]
                 if self.debug:
-                    print(f"Started temporary server on port {port}")
-
+                    print(
+                        f"[chrome_devtools.py] Serving content from temporary server on port {port}. {'Additional files: ' + ', '.join(files.keys()) if files else ''}"
+                    )
                 server_thread = threading.Thread(
                     target=httpd.serve_forever, kwargs={"poll_interval": 0.1}
                 )
@@ -258,24 +307,19 @@ class ChromeContext:
 
                 # Navigate to page
                 url = f"http://localhost:{port}/index.html"
-                if self.debug:
-                    print(f"Navigating to {url}")
                 self._send_command("Page.navigate", {"url": url})
 
-                # Wait for page load
-                if self.debug:
-                    print("Waiting for page load...")
                 while True:
                     if not self.ws:
-                        raise RuntimeError("WebSocket connection lost")
+                        raise RuntimeError(
+                            "[chrome_devtools.py] WebSocket connection lost"
+                        )
                     response = json.loads(self.ws.recv())
                     if response.get("method") == "Page.loadEventFired":
                         if self.debug:
-                            print("Page load complete")
+                            print("[chrome_devtools.py] Page load complete")
                         break
 
-                if self.debug:
-                    print("Shutting down temporary server")
                 httpd.shutdown()
                 server_thread.join()
 
@@ -301,6 +345,11 @@ class ChromeContext:
 
     def screenshot(self, path=None):
         """Take a screenshot of the page, automatically sizing to content height"""
+        if self.debug:
+            print(
+                f"[chrome_devtools.py] Taking screenshot {f'to {path}' if path else '(returning bytes)'}"
+            )
+
         result = self._send_command(
             "Page.captureScreenshot",
             {
@@ -337,7 +386,7 @@ class ChromeContext:
                 - features: list of supported features if available
         """
         # First load a blank page to ensure we have a proper context
-        self.set_content("<html><body></body></html>")
+        self.load_html("<html><body></body></html>")
 
         result = self.evaluate(
             """
@@ -409,11 +458,16 @@ class ChromeContext:
 
         if self.debug:
             if result.get("supported"):
-                print("WebGPU Support:")
-                print(f"  Adapter: {result.get('adapter', {}).get('name')}")
-                print(f"  Features: {', '.join(result.get('features', []))}")
+                print(
+                    f"[chrome_devtools.py] WebGPU Adapter: '{result.get('adapter', {}).get('name')}'"
+                )
+                print(
+                    f"[chrome_devtools.py]   Features: {', '.join(result.get('features', []))}"
+                )
             else:
-                print(f"WebGPU not supported: {result.get('reason')}")
+                print(
+                    f"[chrome_devtools.py] WebGPU not supported: {result.get('reason')}"
+                )
 
         return result
 
@@ -428,7 +482,7 @@ class ChromeContext:
         """
         output_path = Path(output_path)
         if self.debug:
-            print(f"Capturing GPU diagnostics to: {output_path}")
+            print(f"[chrome_devtools.py] Capturing GPU diagnostics to: {output_path}")
 
         # Navigate to GPU info page
         self._send_command("Page.navigate", {"url": "chrome://gpu"})
@@ -438,20 +492,6 @@ class ChromeContext:
             response = json.loads(self.ws.recv())
             if response.get("method") == "Page.loadEventFired":
                 break
-
-        # Wait a bit for dynamic content to load
-        time.sleep(1)
-
-        isSoftware = self.evaluate(
-            """
-                      (async () => {
-                        const adapter = await navigator.gpu.requestAdapter({ forceSoftware: true });
-                        return adapter.requestAdapterInfo?.()
-                        })();
-                      """,
-            await_promise=True,
-        )
-        print(f"WebGPU Adapter: {'SwiftShader' if isSoftware else 'Hardware'}")
 
         # Print to PDF
         result = self._send_command(
@@ -473,7 +513,7 @@ class ChromeContext:
             f.write(pdf_data)
 
         if self.debug:
-            print(f"GPU diagnostics saved to: {output_path}")
+            print(f"[chrome_devtools.py] GPU diagnostics saved to: {output_path}")
 
         return output_path
 
@@ -482,39 +522,21 @@ def main():
     """Example usage"""
     html = """
     <html>
-    <head>
-        <style>
-            body { margin: 0; }
-            div { width: 100vw; height: 100vh; background: red; }
-        </style>
-    </head>
-    <body><div></div></body>
+    <head></head>
+    <body style="background:red; width:100vw; height:100vh;"><div></div></body>
     </html>
     """
 
-    with ChromeContext(width=400, height=600) as chrome:
-        # Load content served via localhost
-        chrome.set_content(html)
-        # Evaluate some JavaScript
-        result = chrome.evaluate('document.body.style.background = "green"; "changed!"')
-        print("Eval result:", result)
-
+    with ChromeContext(width=400, height=600, debug=True) as chrome:
         # Check WebGPU support
-        webgpu_status = chrome.check_webgpu_support()
-        print("WebGPU Support:", webgpu_status)
+        chrome.check_webgpu_support()
 
-        # Take a screenshot
-        screenshot_path = chrome.screenshot("./scratch/screenshots/webgpu_test.png")
-        print(f"Screenshot saved to: {screenshot_path}")
+        # Load content served via localhost
+        chrome.load_html(html)
 
-        # Wait a bit to see the window if DEBUG is True
-        if DEBUG:
-            print("Press Ctrl+C to exit...")
-            try:
-                while True:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                pass
+        chrome.screenshot("./scratch/screenshots/webgpu_test_red.png")
+        chrome.evaluate('document.body.style.background = "green"; "changed!"')
+        chrome.screenshot("./scratch/screenshots/webgpu_test_green.png")
 
 
 if __name__ == "__main__":

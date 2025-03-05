@@ -2,18 +2,21 @@
 Screenshot utilities for GenStudio plots with state change support
 """
 
-import genstudio.layout as layout
 import genstudio.widget as widget
 import json
 import time
 import subprocess  # Added import for subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Union
-from genstudio.util import WIDGET_URL, CSS_URL
+from genstudio.util import read_file
+from genstudio.html import encode_buffers
+from genstudio.env import WIDGET_URL, CSS_URL
 from genstudio.chrome_devtools import ChromeContext
 
 
-def update_state(chrome, state_updates, debug=False):
+def update_state(chrome, state_updates):
+    if chrome.debug:
+        print("[screenshots.py] Updating state")
     if not isinstance(state_updates, list):
         raise AssertionError("state_updates must be a list")
     buffers = []
@@ -24,7 +27,7 @@ def update_state(chrome, state_updates, debug=False):
         (async function() {{
             try {{
                 const updates = {json.dumps(state_data)}
-                const buffers = {layout.encode_buffers(buffers)}
+                const buffers = {encode_buffers(buffers)}
                 const result = window.genstudio.instances['{chrome.id}'].updateWithBuffers(updates, buffers);
                 await window.genstudio.whenReady('{chrome.id}');
                 return result;
@@ -42,27 +45,23 @@ def update_state(chrome, state_updates, debug=False):
 def load_genstudio_html(chrome):
     if not chrome.evaluate("typeof window.genstudio === 'object'"):
         if chrome.debug:
-            print("Loading GenStudio HTML template")
+            print("[screenshots.py] Load html")
 
         files = {}
         # Handle script content based on whether WIDGET_URL is a CDN URL or local file
         if isinstance(WIDGET_URL, str):  # CDN URL
             if chrome.debug:
-                print(f"Using CDN script from: {WIDGET_URL}")
+                print(f"[screenshots.py] Using CDN script from: {WIDGET_URL}")
             script_tag = f'<script type="module" src="{WIDGET_URL}"></script>'
         else:  # Local file
             if chrome.debug:
-                print(f"Loading local script from: {WIDGET_URL}")
+                print(f"[screenshots.py] Loading local script from: {WIDGET_URL}")
             script_tag = '<script type="module" src="studio.js"></script>'
-            files["studio.js"] = layout.get_script_source()
+            files["studio.js"] = read_file(WIDGET_URL)
 
         if isinstance(CSS_URL, str):
-            if chrome.debug:
-                print(f"Using CDN styles from: {CSS_URL}")
             style_tag = f'<style>@import "{CSS_URL}";</style>'
         else:
-            if chrome.debug:
-                print(f"Loading local styles from: {CSS_URL}")
             style_tag = '<style>@import "studio.css";</style>'
             with open(CSS_URL, "r") as file:
                 files["studio.css"] = file.read()
@@ -81,10 +80,7 @@ def load_genstudio_html(chrome):
         </body>
         </html>
         """
-
-        if chrome.debug:
-            print(f"Setting content with files: {list(files.keys())}")
-        chrome.set_content(html, files=files)
+        chrome.load_html(html, files=files)
     elif chrome.debug:
         print("GenStudio already loaded, skipping initialization")
 
@@ -113,8 +109,7 @@ def load_plot(chrome, plot, measure=True):
 
     load_genstudio_html(chrome)
 
-    buffers = []
-    data = layout.to_json_with_initialState(plot, buffers=buffers)
+    data, buffers = widget.to_json_with_initialState(plot, buffers=[])
 
     if chrome.debug:
         print("Rendering plot data")
@@ -123,7 +118,7 @@ def load_plot(chrome, plot, measure=True):
     chrome.evaluate(
         f"""
          (async () => {{
-           window.genstudio.renderData('studio', {json.dumps(data)}, {layout.encode_buffers(buffers)}, '{chrome.id}');
+           window.genstudio.renderData('studio', {json.dumps(data)}, {encode_buffers(buffers)}, '{chrome.id}');
            await window.genstudio.whenReady('{chrome.id}');
          }})()
          """,
@@ -163,13 +158,7 @@ def take_screenshot(
 
     with ChromeContext(width=width, height=height, debug=debug) as chrome:
         load_plot(chrome, plot)
-
-        if debug:
-            print("Applying state update before screenshot")
-        update_state(chrome, [state_update or {}], debug=debug)
-
-        if debug:
-            print("Capturing screenshot")
+        update_state(chrome, [state_update or {}])
         return chrome.screenshot(output_path)
 
 

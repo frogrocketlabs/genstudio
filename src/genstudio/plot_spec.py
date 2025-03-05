@@ -1,8 +1,8 @@
 import uuid
 from typing import Any, Sequence, TypeAlias, Union
 
+from genstudio.env import CONFIG
 from genstudio.layout import JSRef, JSCall, LayoutItem
-from genstudio.util import CONFIG
 
 SpecInput: TypeAlias = Union[
     "PlotSpec",

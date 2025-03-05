@@ -5,7 +5,12 @@ Tests for WebGPU screenshot functionality in GenStudio
 import os
 import shutil
 from pathlib import Path
-from genstudio.screenshots import take_screenshot, take_screenshot_sequence, video
+from genstudio.screenshots import (
+    ChromeContext,
+    take_screenshot,
+    take_screenshot_sequence,
+    video,
+)
 import genstudio.plot as Plot
 from genstudio.scene3d import Ellipsoid
 
@@ -88,13 +93,14 @@ def test_counter_plot():
 
 
 if __name__ == "__main__":
-    # with ChromeContext(debug=True) as chrome:
-    #     # Check WebGPU support
-    #     webgpu_status = chrome.check_webgpu_support()
+    with ChromeContext(debug=True) as chrome:
+        # Check WebGPU support
+        webgpu_status = chrome.check_webgpu_support()
 
-    #     # Save full GPU diagnostics
-    #     chrome.save_gpu_info(ARTIFACTS_DIR / "gpu_diagnostics.pdf")
-
+        # Save full GPU diagnostics
+        chrome.save_gpu_info(ARTIFACTS_DIR / "gpu_diagnostics.pdf")
+    with ChromeContext(debug=True) as chrome:
+        chrome.check_webgpu_support()
     test_basic_screenshot()
 
     test_counter_plot()

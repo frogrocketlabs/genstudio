@@ -1,110 +1,16 @@
-import base64
-import json
 import os
 import uuid
 from typing import Any, List, Optional, Tuple, Union, Self
 
-from html2image import Html2Image
-from PIL import Image
-
-from genstudio.util import CONFIG, WIDGET_URL, CSS_URL
-from genstudio.widget import Widget, to_json_with_initialState, WidgetState
+from genstudio.env import CONFIG
+from genstudio.html import html_snippet, html_page
+from genstudio.widget import Widget, WidgetState
+from genstudio.screenshots import take_screenshot
 
 
 def create_parent_dir(path: str) -> None:
     """Create parent directory if it doesn't exist."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-
-
-def get_script_source():
-    with open(WIDGET_URL, "r") as js_file:
-        return js_file.read()
-
-
-def get_script_content():
-    """Get the JS content either from CDN or local file"""
-    if isinstance(WIDGET_URL, str):  # It's a CDN URL
-        return f'import {{ renderData }} from "{WIDGET_URL}";'
-    else:  # It's a local Path
-        # Create a blob URL for the module
-        with open(WIDGET_URL, "r") as js_file:
-            content = js_file.read()
-
-        encoded_content = base64.b64encode(content.encode("utf-8")).decode("utf-8")
-        return f"""
-            const encodedContent = "{encoded_content}";
-            const decodedContent = atob(encodedContent);
-            const moduleBlob = new Blob([decodedContent], {{ type: 'text/javascript' }});
-            const moduleUrl = URL.createObjectURL(moduleBlob);
-            const {{ renderData }} = await import(moduleUrl);
-            URL.revokeObjectURL(moduleUrl);
-        """
-
-
-def get_style_content():
-    """Get the CSS content either from CDN or local file"""
-    if isinstance(CSS_URL, str):  # It's a CDN URL
-        return f'@import "{CSS_URL}";'
-    else:  # It's a local Path
-        with open(CSS_URL, "r") as css_file:
-            return css_file.read()
-
-
-def encode_buffers(buffers):
-    buffer_entries = [
-        f"'{base64.b64encode(buffer).decode('utf-8')}'" for buffer in buffers
-    ]
-    return "[" + ",".join(buffer_entries) + "]"
-
-
-def html_snippet(ast, id=None):
-    id = id or f"genstudio-widget-{uuid.uuid4().hex}"
-    buffers = []
-    data = to_json_with_initialState(ast, buffers=buffers)
-
-    # Get JS and CSS content
-    js_content = get_script_content()
-    css_content = get_style_content()
-
-    html_content = f"""
-    <style>{css_content}</style>
-    <div class="bg-white p3" id="{id}"></div>
-
-    <script type="application/json">
-        {json.dumps(data)}
-    </script>
-
-    <script type="module">
-        {js_content};
-
-        const container = document.getElementById('{id}');
-        const jsonString = container.nextElementSibling.textContent;
-        let data;
-        try {{
-            data = JSON.parse(jsonString);
-        }} catch (error) {{
-            console.error('Failed to parse JSON:', error);
-        }}
-        window.genstudio.renderData(container, data, {encode_buffers(buffers)});
-    </script>
-    """
-
-    return html_content
-
-
-def html_standalone(ast, id=None):
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>GenStudio Widget</title>
-    </head>
-    <body>
-        {html_snippet(ast, id)}
-    </body>
-    </html>
-    """
 
 
 class HTML:
@@ -198,26 +104,18 @@ class LayoutItem:
     def save_html(self, path: str) -> None:
         create_parent_dir(path)
         with open(path, "w") as f:
-            f.write(html_standalone(self.for_json()))
+            f.write(html_page(self.for_json()))
         print(f"HTML saved to {path}")
 
-    def save_image(self, path, width=500, height=1000):
-        # Save image using headless browser
-        create_parent_dir(path)
+    def save_image(self, path, width=500, height=None):
+        """Save the plot as an image using headless browser.
 
-        hti = Html2Image()
-        hti.size = (width, height)
-        hti.output_path = os.path.dirname(os.path.abspath(path))
-
-        hti.screenshot(
-            html_str=html_standalone(self.for_json()), save_as=os.path.basename(path)
-        )
-
-        # Crop transparent regions
-        img = Image.open(path)
-        img = img.crop(img.getbbox())
-        img.save(path)
-
+        Args:
+            path: Path to save the image to
+            width: Width of the image in pixels (default: 500)
+            height: Optional height of the image in pixels
+        """
+        take_screenshot(self, path, width=width, height=height)
         print(f"Image saved to {path}")
 
     def reset(self, other: "LayoutItem") -> None:

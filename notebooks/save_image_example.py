@@ -16,7 +16,7 @@ Plot.dot([[1, 1]]).save_html("scratch/foo/basic_plot.html")
 # To save a plot as an image, use `.save_image(path)`:
 
 # %%
-Plot.dot([[1, 1]]).save_image("scratch/bar/basic_plot.png", width=800, height=600)
+Plot.dot([[1, 1]]).save_image("scratch/bar/basic_plot.png", width=200)
 
 # %% [markdown]
-# This will create an image file named "basic_plot.png" with the specified `width` and `height` in pixels. The image will be automatically cropped to remove any transparent regions.
+# This will create an image file named "basic_plot.png" with the specified `width` in pixels.

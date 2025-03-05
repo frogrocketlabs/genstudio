@@ -160,7 +160,7 @@ from genstudio.plot_defs import (
     windowY,
 )
 from genstudio.plot_spec import MarkSpec, PlotSpec, new
-from genstudio.util import configure
+from genstudio.env import configure
 
 # This module provides a composable way to create interactive plots using Observable Plot
 # and AnyWidget, built on the work of pyobsplot.
