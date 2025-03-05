@@ -1,3 +1,7 @@
+### [2025.3.2] - Mar 05, 2025
+
+- do not create new datas arrays in collectTypeData
+
 ### [2025.3.1] - Mar 05, 2025
 
 - Video export via `plot.save_video(...)` and image series via `plot.save_images(...)`, with support for arbitrary `state_updates` to control what is rendered for each frame.
