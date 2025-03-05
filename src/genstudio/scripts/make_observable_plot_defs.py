@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import genstudio.util as util
+from genstudio.env import PARENT_PATH
 from genstudio.layout import JSCall
 from genstudio.plot_spec import MarkSpec, PlotSpec
 
@@ -12,7 +12,7 @@ PlotOptions = dict[str, Any] | JSCall
 ELIDE = ["plot"]
 
 OBSERVABLE_PLOT_METADATA: Dict[str, Any] = json.load(
-    open(util.PARENT_PATH / "scripts" / "observable_plot_metadata.json")
+    open(PARENT_PATH / "scripts" / "observable_plot_metadata.json")
 )
 OBSERVABLE_FNS: Dict[str, Any] = {
     k: v for k, v in OBSERVABLE_PLOT_METADATA["entries"].items() if k not in ELIDE
@@ -21,7 +21,7 @@ OBSERVABLE_VERSION: str = OBSERVABLE_PLOT_METADATA["version"]
 
 
 def get_function_def(path: str, func_name: str) -> Optional[str]:
-    source = Path(util.PARENT_PATH / path).read_text()
+    source = Path(PARENT_PATH / path).read_text()
     lines = source.split("\n")
     # Python functions start with 'def' followed by the function name and a colon
     start_index = next(
@@ -193,7 +193,7 @@ plot_defs_module
 
 # %%
 
-with open(util.PARENT_PATH / "plot_defs.py", "w") as f:
+with open(PARENT_PATH / "plot_defs.py", "w") as f:
     f.write(plot_defs_module)
 
 # %%

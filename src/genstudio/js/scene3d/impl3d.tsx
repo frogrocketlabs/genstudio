@@ -7,9 +7,11 @@ import React, {
   useEffect,
   useMemo,
   useRef,
-  useState
+  useState,
+  useContext
 } from 'react';
 import { throttle } from '../utils';
+import {$StateContext} from '../context';
 
 import {
   CameraParams,
@@ -60,6 +62,9 @@ export interface SceneInnerProps {
 
   /** Callback fired after each frame render with the render time in milliseconds */
   onFrameRendered?: (renderTime: number) => void;
+
+  /** Callback to fire when scene is initially ready */
+  onReady: () => void;
 }
 function initGeometryResources(device: GPUDevice, resources: GeometryResources) {
   // Create geometry for each primitive type
@@ -189,13 +194,15 @@ function renderPass({
   context,
   depthTexture,
   renderObjects,
-  uniformBindGroup
+  uniformBindGroup,
+  onRenderComplete
 }: {
   device: GPUDevice;
   context: GPUCanvasContext;
   depthTexture: GPUTexture | null;
   renderObjects: RenderObject[];
   uniformBindGroup: GPUBindGroup;
+  onRenderComplete: () => void;
 }) {
 
   function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject, 'pipeline' | 'vertexBuffers' | 'instanceCount'>> & {
@@ -253,6 +260,7 @@ function renderPass({
 
   pass.end();
   device.queue.submit([cmd.finish()]);
+  device.queue.onSubmittedWorkDone().then(onRenderComplete)
 
 
 }
@@ -442,9 +450,11 @@ export function SceneInner({
   camera: controlledCamera,
   defaultCamera,
   onCameraChange,
-  onFrameRendered
+  onFrameRendered,
+  onReady
 }: SceneInnerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const $state = useContext($StateContext);
 
   // We'll store references to the GPU + other stuff in a ref object
   const gpuRef = useRef<{
@@ -509,7 +519,20 @@ export function SceneInner({
     try {
       const adapter = await navigator.gpu.requestAdapter();
       if(!adapter) throw new Error("No GPU adapter found");
-      const device = await adapter.requestDevice();
+      const device = await adapter.requestDevice().catch(err => {
+        console.error("Failed to create WebGPU device:", err);
+        throw err;
+      });
+
+      // Add error handling for uncaptured errors
+      device.addEventListener('uncapturederror', (event) => {
+        console.error('Uncaptured WebGPU error:', event.error);
+        // Log additional context about where the error occurred
+        console.error('Error source:', event.error.message);
+        if (event.error.stack) {
+          console.error('Stack trace:', event.error.stack);
+        }
+      });
 
       const context = canvasRef.current.getContext('webgpu') as GPUCanvasContext;
       const format = navigator.gpu.getPreferredCanvasFormat();
@@ -579,44 +602,44 @@ export function SceneInner({
     const { device, depthTexture } = gpuRef.current;
 
     // Get the actual canvas size
-    const canvas = canvasRef.current;
-    const displayWidth = canvas.width;
-    const displayHeight = canvas.height;
+        const canvas = canvasRef.current;
+        const displayWidth = canvas.width;
+        const displayHeight = canvas.height;
 
-    if(depthTexture) depthTexture.destroy();
-    const dt = device.createTexture({
-        size: [displayWidth, displayHeight],
-        format: 'depth24plus',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT
-    });
-    gpuRef.current.depthTexture = dt;
-    }, []);
+        if(depthTexture) depthTexture.destroy();
+        const dt = device.createTexture({
+            size: [displayWidth, displayHeight],
+            format: 'depth24plus',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT
+        });
+        gpuRef.current.depthTexture = dt;
+  }, []);
 
   const createOrUpdatePickTextures = useCallback(() => {
     if(!gpuRef.current || !canvasRef.current) return;
     const { device, pickTexture, pickDepthTexture } = gpuRef.current;
 
     // Get the actual canvas size
-    const canvas = canvasRef.current;
-    const displayWidth = canvas.width;
-    const displayHeight = canvas.height;
+        const canvas = canvasRef.current;
+        const displayWidth = canvas.width;
+        const displayHeight = canvas.height;
 
-    if(pickTexture) pickTexture.destroy();
-    if(pickDepthTexture) pickDepthTexture.destroy();
+        if(pickTexture) pickTexture.destroy();
+        if(pickDepthTexture) pickDepthTexture.destroy();
 
-    const colorTex = device.createTexture({
-        size: [displayWidth, displayHeight],
-        format: 'rgba8unorm',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC
-    });
-    const depthTex = device.createTexture({
-        size: [displayWidth, displayHeight],
-        format: 'depth24plus',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT
-    });
-    gpuRef.current.pickTexture = colorTex;
-    gpuRef.current.pickDepthTexture = depthTex;
-}, []);
+        const colorTex = device.createTexture({
+            size: [displayWidth, displayHeight],
+            format: 'rgba8unorm',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC
+        });
+        const depthTex = device.createTexture({
+            size: [displayWidth, displayHeight],
+            format: 'depth24plus',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT
+        });
+        gpuRef.current.pickTexture = colorTex;
+        gpuRef.current.pickDepthTexture = depthTex;
+  }, []);
 
 
   type ComponentType = ComponentConfig['type'];
@@ -934,6 +957,8 @@ export function SceneInner({
   const renderFrame = useCallback(function renderFrameInner(camState: CameraState, components?: ComponentConfig[]) {
     if(!gpuRef.current) return;
 
+    const onRenderComplete = $state.beginUpdate("impl3d/renderFrame")
+
     components = components || gpuRef.current.renderedComponents;
     const componentsChanged = gpuRef.current.renderedComponents !== components;
 
@@ -1023,7 +1048,7 @@ export function SceneInner({
     const uniformData = computeUniformData(containerWidth, containerHeight, camState);
     device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
-    renderPass({device, context, depthTexture, renderObjects, uniformBindGroup})
+    renderPass({device, context, depthTexture, renderObjects, uniformBindGroup, onRenderComplete})
 
     onFrameRendered?.(performance.now());
   }, [containerWidth, containerHeight, onFrameRendered, components]);
@@ -1397,6 +1422,7 @@ export function SceneInner({
   useEffect(() => {
     if (isReady && gpuRef.current) {
       renderFrame(activeCamera, components);
+      onReady();
     }
   }, [isReady, components, activeCamera]);
 
@@ -1421,7 +1447,7 @@ export function SceneInner({
     <div style={{ width: '100%', border: '1px solid #ccc' }}>
         <canvas
             ref={canvasRef}
-            style={style}
+            style={{border: 'none', ...style}}
         />
     </div>
   );

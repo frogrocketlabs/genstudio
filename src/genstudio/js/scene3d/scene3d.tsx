@@ -6,12 +6,13 @@
  *
  */
 
-import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useEffect, useRef, useContext } from 'react';
 import { SceneInner, ComponentConfig, PointCloudComponentConfig, EllipsoidComponentConfig, EllipsoidAxesComponentConfig, CuboidComponentConfig, LineBeamsComponentConfig } from './impl3d';
 import { CameraParams, DEFAULT_CAMERA } from './camera3d';
 import { useContainerWidth } from '../utils';
 import { FPSCounter, useFPSCounter } from './fps';
 import { tw } from '../utils';
+import {$StateContext} from "../context"
 
 /**
  * Helper function to coerce specified fields to Float32Array if they exist and are arrays
@@ -266,6 +267,8 @@ export function Scene({
 }: SceneProps) {
     const [containerRef, measuredWidth] = useContainerWidth(1);
     const internalCameraRef = useRef({...DEFAULT_CAMERA, ...defaultCamera, ...camera});
+    const $state: any = useContext($StateContext);
+    const onReady = useMemo(() => $state.beginUpdate("scene3d/ready"), [])
 
     const cameraChangeCallback = useCallback((camera) => {
       internalCameraRef.current = camera;
@@ -320,8 +323,8 @@ export function Scene({
     return (
         <div
             ref={containerRef as React.RefObject<HTMLDivElement | null>}
-            className={className + ` ${tw('font-base')}`}
-            style={{ width: '100%', position: 'relative', ...style }}
+            className={`${className || ''} ${tw('font-base relative w-full')}`}
+            style={{ ...style }}
             onContextMenu={handleContextMenu}
         >
             {dimensions && (
@@ -335,6 +338,7 @@ export function Scene({
                         defaultCamera={defaultCamera}
                         onCameraChange={cameraChangeCallback}
                         onFrameRendered={updateDisplay}
+                        onReady={onReady}
                     />
                     {showFps && <FPSCounter fpsRef={fpsDisplayRef} />}
                     <DevMenu

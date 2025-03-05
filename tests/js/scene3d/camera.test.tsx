@@ -6,12 +6,14 @@ import { SceneInner } from '../../../src/genstudio/js/scene3d/impl3d';
 import type { ComponentConfig } from '../../../src/genstudio/js/scene3d/components';
 import type { CameraParams } from '../../../src/genstudio/js/scene3d/camera3d';
 import { setupWebGPU, cleanupWebGPU } from '../webgpu-setup';
+import { withBlankState } from '../test-utils';
 
 describe('Scene3D Camera Controls', () => {
   let container: HTMLDivElement;
   let mockDevice: GPUDevice;
   let mockQueue: GPUQueue;
   let mockContext: GPUCanvasContext;
+  let WrappedSceneInner: React.ComponentType<React.ComponentProps<typeof SceneInner>>;
 
   beforeEach(() => {
     // Set up fake timers first
@@ -21,6 +23,9 @@ describe('Scene3D Camera Controls', () => {
     document.body.appendChild(container);
 
     setupWebGPU();
+
+    // Create wrapped component with blank state
+    WrappedSceneInner = withBlankState(SceneInner);
 
     // Create detailed WebGPU mocks with software rendering capabilities
     mockQueue = {
@@ -74,7 +79,9 @@ describe('Scene3D Camera Controls', () => {
         createView: vi.fn(),
         destroy: vi.fn()
       })),
-      queue: mockQueue
+      queue: mockQueue,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
     } as unknown as GPUDevice;
 
     // Mock WebGPU API
@@ -124,12 +131,13 @@ describe('Scene3D Camera Controls', () => {
       let result;
       await act(async () => {
         result = render(
-          <SceneInner
+          <WrappedSceneInner
             components={[]}
             containerWidth={800}
             containerHeight={600}
             camera={controlledCamera}
             onCameraChange={onCameraChange}
+            onReady={vi.fn()}
           />
         );
       });
@@ -154,11 +162,12 @@ describe('Scene3D Camera Controls', () => {
       let result;
       await act(async () => {
         result = render(
-          <SceneInner
+          <WrappedSceneInner
             components={[]}
             containerWidth={800}
             containerHeight={600}
             onCameraChange={onCameraChange}
+            onReady={vi.fn()}
           />
         );
       });
@@ -189,12 +198,13 @@ describe('Scene3D Camera Controls', () => {
       let result;
       await act(async () => {
         result = render(
-          <SceneInner
+          <WrappedSceneInner
             components={[]}
             containerWidth={800}
             containerHeight={600}
             camera={initialCamera}
             onCameraChange={onCameraChange}
+            onReady={vi.fn()}
           />
         );
       });
@@ -219,5 +229,123 @@ describe('Scene3D Camera Controls', () => {
       expect(Array.from(newCamera.target)).not.toEqual(Array.from(initialCamera.target));
     });
 
+    it('should handle camera controls', async () => {
+      const camera: CameraParams = {
+        fov: 45,
+        near: 0.1,
+        far: 1000,
+        position: [0, 0, 5],
+        target: [0, 0, 0],
+        up: [0, 1, 0]
+      };
+
+      let result;
+      await act(async () => {
+        result = render(
+          <WrappedSceneInner
+            components={[]}
+            containerWidth={800}
+            containerHeight={600}
+            camera={camera}
+            onReady={vi.fn()}
+          />
+        );
+      });
+
+      const canvas = result!.container.querySelector('canvas');
+      expect(canvas).toBeDefined();
+
+      // Test camera rotation
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 100, clientY: 100, button: 0 });
+        fireEvent.mouseMove(canvas!, { clientX: 200, clientY: 100 });
+        fireEvent.mouseUp(canvas!);
+      });
+
+      // Test camera zoom
+      await act(async () => {
+        fireEvent.wheel(canvas!, { deltaY: -100 });
+      });
+
+      // Test camera drag
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 100, clientY: 100, button: 2 });
+        fireEvent.mouseMove(canvas!, { clientX: 200, clientY: 100 });
+        fireEvent.mouseUp(canvas!);
+      });
+    });
+
+    it('should handle camera zoom', async () => {
+      const onCameraChange = vi.fn();
+
+      let result;
+      await act(async () => {
+        result = render(
+          <WrappedSceneInner
+            components={[]}
+            containerWidth={800}
+            containerHeight={600}
+            onCameraChange={onCameraChange}
+            onReady={vi.fn()}
+          />
+        );
+      });
+
+      const canvas = result!.container.querySelector('canvas');
+
+      // Simulate zoom
+      await act(async () => {
+        fireEvent.wheel(canvas!, { deltaY: 100 });
+      });
+
+      expect(onCameraChange).toHaveBeenCalled();
+      const newCamera = onCameraChange.mock.calls[0][0];
+      expect(newCamera.position[2]).toBeDefined();
+    });
+
+    it('should handle camera drag', async () => {
+      const onCameraChange = vi.fn();
+      const camera: CameraParams = {
+        position: [0, 0, 5],
+        target: [0, 0, 0],
+        up: [0, 1, 0],
+        fov: 45,
+        near: 0.1,
+        far: 1000
+      };
+
+      let result;
+      await act(async () => {
+        result = render(
+          <WrappedSceneInner
+            components={[]}
+            containerWidth={800}
+            containerHeight={600}
+            camera={camera}
+            onCameraChange={onCameraChange}
+            onReady={vi.fn()}
+          />
+        );
+      });
+
+      const canvas = result!.container.querySelector('canvas');
+
+      // Wait for initial setup
+      await vi.runAllTimersAsync();
+
+      // Simulate pan with middle mouse button (button=1) or shift+left click
+      await act(async () => {
+        fireEvent.mouseDown(canvas!, { clientX: 0, clientY: 0, button: 0, shiftKey: true });
+        await vi.runAllTimersAsync();
+        fireEvent.mouseMove(canvas!, { clientX: 100, clientY: 100, buttons: 1 });
+        await vi.runAllTimersAsync();
+        fireEvent.mouseUp(canvas!);
+        await vi.runAllTimersAsync();
+      });
+
+      expect(onCameraChange).toHaveBeenCalled();
+      const newCamera = onCameraChange.mock.calls[0][0];
+      expect(Array.from(newCamera.target)).not.toEqual(Array.from(camera.target));
+    });
   });
 });

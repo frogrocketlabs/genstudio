@@ -1,7 +1,6 @@
 # Developer's Guide
 
-This guide describes how to complete various tasks you'll encounter when working
-on the GenStudio codebase.
+This guide covers common development tasks in the GenStudio codebase.
 
 ### Jupyter notes
 
@@ -15,32 +14,30 @@ If jupyter has trouble finding a kernel to evaluate from, you can install one (u
 poetry run python -m ipykernel install --user --name genstudio
 ```
 
-### Commit Hooks
+### Pre-commit Hooks
 
-We use [pre-commit](https://pre-commit.com/) to manage a series of git
-pre-commit hooks for the project; for example, each time you commit code, the
-hooks will make sure that your python is formatted properly. If your code isn't,
-the hook will format it, so when you try to commit the second time you'll get
-past the hook.
+Pre-commit hooks ensure code consistency. They run automatically on each commit to format Python code and perform other checks.
 
-All hooks are defined in `.pre-commit-config.yaml`. To install these hooks,
-install `pre-commit` if you don't yet have it. I prefer using
-[pipx](https://github.com/pipxproject/pipx) so that `pre-commit` stays globally
-available.
+Setup:
 
+1. Install pre-commit:
 ```bash
 pipx install pre-commit
 ```
 
-Then install the hooks with this command:
-
+2. Install hooks:
 ```bash
 pre-commit install
 ```
 
-Now they'll run on every commit. If you want to run them manually, run the
-following command:
-
+Run hooks manually:
 ```bash
 pre-commit run --all-files
 ```
+
+Hooks are configured in `.pre-commit-config.yaml`.
+
+
+### WebGPU Testing
+
+The scene3d features require a webgpu-supported environment for testing, so there is an extra GitHub action to demonstrate/test webgpu screenshot capture in CI. Note that we specify a gpu-enabled runner for this action.

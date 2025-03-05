@@ -5,18 +5,23 @@ import React from 'react';
 import { SceneInner } from '../../../src/genstudio/js/scene3d/impl3d';
 import type { ComponentConfig } from '../../../src/genstudio/js/scene3d/components';
 import { setupWebGPU, cleanupWebGPU } from '../webgpu-setup';
+import { withBlankState } from '../test-utils';
 
 describe('Scene3D Core Rendering', () => {
   let container: HTMLDivElement;
   let mockDevice: GPUDevice;
   let mockQueue: GPUQueue;
   let mockContext: GPUCanvasContext;
+  let WrappedSceneInner: React.ComponentType<React.ComponentProps<typeof SceneInner>>;
 
   beforeEach(() => {
     container = document.createElement('div');
     document.body.appendChild(container);
 
     setupWebGPU();
+
+    // Create wrapped component with blank state
+    WrappedSceneInner = withBlankState(SceneInner);
 
     // Create detailed WebGPU mocks with software rendering capabilities
     mockQueue = {
@@ -70,7 +75,9 @@ describe('Scene3D Core Rendering', () => {
         createView: vi.fn(),
         destroy: vi.fn()
       })),
-      queue: mockQueue
+      queue: mockQueue,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
     } as unknown as GPUDevice;
 
     // Mock WebGPU API
@@ -114,7 +121,14 @@ describe('Scene3D Core Rendering', () => {
 
       let result;
       await act(async () => {
-        result = render(<SceneInner {...props} />);
+        result = render(
+          <WrappedSceneInner
+            components={props.components}
+            containerWidth={props.containerWidth}
+            containerHeight={props.containerHeight}
+            onReady={vi.fn()}
+          />
+        );
       });
 
       const canvas = result!.container.querySelector('canvas');
@@ -125,18 +139,32 @@ describe('Scene3D Core Rendering', () => {
 
     it('should handle window resize', async () => {
       const props = {
-        components: [],
+        components: [] as ComponentConfig[],
         containerWidth: 800,
         containerHeight: 600
       };
 
       let result;
       await act(async () => {
-        result = render(<SceneInner {...props} />);
+        result = render(
+          <WrappedSceneInner
+            components={props.components}
+            containerWidth={props.containerWidth}
+            containerHeight={props.containerHeight}
+            onReady={vi.fn()}
+          />
+        );
       });
 
       await act(async () => {
-        result!.rerender(<SceneInner {...props} containerWidth={1000} containerHeight={800} />);
+        result!.rerender(
+          <WrappedSceneInner
+            components={props.components}
+            containerWidth={1000}
+            containerHeight={800}
+            onReady={vi.fn()}
+          />
+        );
       });
 
       const canvas = result!.container.querySelector('canvas');
@@ -146,13 +174,20 @@ describe('Scene3D Core Rendering', () => {
 
     it('should initialize WebGPU context and resources', async () => {
       const props = {
-        components: [],
+        components: [] as ComponentConfig[],
         containerWidth: 800,
         containerHeight: 600
       };
 
       await act(async () => {
-        render(<SceneInner {...props} />);
+        render(
+          <WrappedSceneInner
+            components={props.components}
+            containerWidth={props.containerWidth}
+            containerHeight={props.containerHeight}
+            onReady={vi.fn()}
+          />
+        );
       });
 
       expect(mockDevice.createBindGroupLayout).toHaveBeenCalled();
@@ -191,7 +226,7 @@ describe('Scene3D Core Rendering', () => {
 
     it('should clean up resources when unmounting', async () => {
       const props = {
-        components: [],
+        components: [] as ComponentConfig[],
         containerWidth: 800,
         containerHeight: 600
       };
@@ -199,7 +234,14 @@ describe('Scene3D Core Rendering', () => {
       // Render with our mock buffer already set up
       let result;
       await act(async () => {
-        result = render(<SceneInner {...props} />);
+        result = render(
+          <WrappedSceneInner
+            components={props.components}
+            containerWidth={props.containerWidth}
+            containerHeight={props.containerHeight}
+            onReady={vi.fn()}
+          />
+        );
       });
 
       // Wait for initial setup
@@ -217,13 +259,20 @@ describe('Scene3D Core Rendering', () => {
 
     it('should handle device lost events', async () => {
       const props = {
-        components: [],
+        components: [] as ComponentConfig[],
         containerWidth: 800,
         containerHeight: 600
       };
 
       await act(async () => {
-        render(<SceneInner {...props} />);
+        render(
+          <WrappedSceneInner
+            components={props.components}
+            containerWidth={props.containerWidth}
+            containerHeight={props.containerHeight}
+            onReady={vi.fn()}
+          />
+        );
       });
 
       // Simulate device lost without direct assignment
@@ -242,14 +291,22 @@ describe('Scene3D Core Rendering', () => {
     it('should call onFrameRendered with timing info', async () => {
       const onFrameRendered = vi.fn();
       const props = {
-        components: [],
+        components: [] as ComponentConfig[],
         containerWidth: 800,
         containerHeight: 600,
         onFrameRendered
       };
 
       await act(async () => {
-        render(<SceneInner {...props} />);
+        render(
+          <WrappedSceneInner
+            components={props.components}
+            containerWidth={props.containerWidth}
+            containerHeight={props.containerHeight}
+            onFrameRendered={props.onFrameRendered}
+            onReady={vi.fn()}
+          />
+        );
       });
 
       expect(onFrameRendered).toHaveBeenCalled();

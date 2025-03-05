@@ -1,93 +1,17 @@
-import base64
-import json
 import os
 import uuid
 from typing import Any, List, Optional, Tuple, Union, Self
 
-from html2image import Html2Image
-from PIL import Image
-
-from genstudio.util import CONFIG, WIDGET_URL, CSS_URL
-from genstudio.widget import Widget, to_json_with_initialState, WidgetState
+from genstudio.env import CONFIG
+from genstudio.html import html_snippet, html_page
+from genstudio.widget import Widget, WidgetState
+from genstudio.screenshots import take_screenshot
+from pathlib import Path
 
 
 def create_parent_dir(path: str) -> None:
     """Create parent directory if it doesn't exist."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-
-
-def get_script_content():
-    """Get the JS content either from CDN or local file"""
-    if isinstance(WIDGET_URL, str):  # It's a CDN URL
-        return f'import {{ renderData }} from "{WIDGET_URL}";'
-    else:  # It's a local Path
-        with open(WIDGET_URL, "r") as js_file:
-            return js_file.read()
-
-
-def get_style_content():
-    """Get the CSS content either from CDN or local file"""
-    if isinstance(CSS_URL, str):  # It's a CDN URL
-        return f'@import "{CSS_URL}";'
-    else:  # It's a local Path
-        with open(CSS_URL, "r") as css_file:
-            return css_file.read()
-
-
-def html_snippet(ast, id=None):
-    id = id or f"genstudio-widget-{uuid.uuid4().hex}"
-    buffers = []
-    data = to_json_with_initialState(ast, buffers=buffers)
-
-    # Encode buffers as base64 strings to include in HTML
-    encoded_buffers = [
-        f"'{base64.b64encode(buffer).decode('utf-8')}'" for buffer in buffers
-    ]
-    buffers_array = f"[{','.join(encoded_buffers)}]"
-
-    # Get JS and CSS content
-    js_content = get_script_content()
-    css_content = get_style_content()
-
-    html_content = f"""
-    <style>{css_content}</style>
-    <div class="bg-white p3" id="{id}"></div>
-
-    <script type="application/json">
-        {json.dumps(data)}
-    </script>
-
-    <script type="module">
-        {js_content}
-        const container = document.getElementById('{id}');
-        const jsonString = container.nextElementSibling.textContent;
-        const buffers = {buffers_array}.map(b => Uint8Array.from(atob(b), c => c.charCodeAt(0)));
-        let data;
-        try {{
-            data = JSON.parse(jsonString);
-        }} catch (error) {{
-            console.error('Failed to parse JSON:', error);
-        }}
-        renderData(container, data, buffers);
-    </script>
-    """
-
-    return html_content
-
-
-def html_standalone(ast, id=None):
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>GenStudio Widget</title>
-    </head>
-    <body>
-        {html_snippet(ast, id)}
-    </body>
-    </html>
-    """
 
 
 class HTML:
@@ -181,27 +105,93 @@ class LayoutItem:
     def save_html(self, path: str) -> None:
         create_parent_dir(path)
         with open(path, "w") as f:
-            f.write(html_standalone(self.for_json()))
+            f.write(html_page(self.for_json()))
         print(f"HTML saved to {path}")
 
-    def save_image(self, path, width=500, height=1000):
-        # Save image using headless browser
-        create_parent_dir(path)
+    def save_image(self, path, width=500, height=None, debug=False):
+        """Save the plot as an image using headless browser.
 
-        hti = Html2Image()
-        hti.size = (width, height)
-        hti.output_path = os.path.dirname(os.path.abspath(path))
+        Args:
+            path: Path to save the image to
+            width: Width of the image in pixels (default: 500)
+            height: Optional height of the image in pixels
+        """
+        take_screenshot(self, path, width=width, height=height, debug=debug)
+        print(f"Image saved to {path}")
 
-        hti.screenshot(
-            html_str=html_standalone(self.for_json()), save_as=os.path.basename(path)
+    def save_images(
+        self,
+        state_updates,
+        output_dir: Union[str, Path] = "./scratch/screenshots",
+        filenames=None,
+        filename_base="screenshot",
+        width=500,
+        height=None,
+        debug=False,
+    ):
+        """Save a sequence of images for different states of the plot.
+
+        Args:
+            state_updates: List of state updates to apply before each screenshot
+            output_dir: Directory to save screenshots (default: "./scratch/screenshots")
+            filenames: Optional list of filenames for each screenshot. Must match length of state_updates
+            filename_base: Base name for auto-generating filenames if filenames not provided
+            width: Width of the images in pixels (default: 500)
+            height: Optional height of the images in pixels
+            debug: Whether to print debug information
+
+        Returns:
+            List of paths to saved screenshots
+        """
+        from genstudio.screenshots import take_screenshot_sequence
+
+        return take_screenshot_sequence(
+            self,
+            state_updates,
+            output_dir=output_dir,
+            filenames=filenames,
+            filename_base=filename_base,
+            width=width,
+            height=height,
+            debug=debug,
         )
 
-        # Crop transparent regions
-        img = Image.open(path)
-        img = img.crop(img.getbbox())
-        img.save(path)
+    def save_video(
+        self,
+        state_updates,
+        filename,
+        fps=24,
+        width=500,
+        height=None,
+        scale=2.0,
+        debug=False,
+    ):
+        """Save a sequence of states as a video.
 
-        print(f"Image saved to {path}")
+        Args:
+            state_updates: List of state updates to apply sequentially
+            filename: Path where the resulting video will be saved
+            fps: Frame rate (frames per second) for the video (default: 24)
+            width: Width of the video in pixels (default: 500)
+            height: Optional height of the video in pixels
+            scale: Scale factor for rendering (default: 2.0)
+            debug: Whether to print debug information
+
+        Returns:
+            Path to the saved video file
+        """
+        from genstudio.screenshots import video
+
+        return video(
+            self,
+            state_updates,
+            filename,
+            fps=fps,
+            width=width,
+            height=height,
+            scale=scale,
+            debug=debug,
+        )
 
     def reset(self, other: "LayoutItem") -> None:
         """
