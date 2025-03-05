@@ -39,7 +39,7 @@ nav:
   - Advanced:
     - Python Event Loops: learn-more/python-event-loop.py
     - Compare with Observable Plot: learn-more/vs-observable.py
-    - Save / Export Images: learn-more/save-as-image.py
+    - Export Images/Video/HTML: learn-more/export.py
     - Plot Options: learn-more/plot-options.py
   - Examples:
       - Draw Density: examples/draw-density.py
