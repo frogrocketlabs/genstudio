@@ -372,30 +372,52 @@ class ChromeContext:
         if self.debug:
             print("[chrome_devtools.py] Capturing PDF")
 
-        # Set page width to 8.5 inches and calculate proportional height
-        paper_width = 8.5
+        # Convert pixel width to inches at 96 DPI
+        paper_width = self.width / 96
         paper_height = paper_width * ((self.height or self.width) / self.width)
 
+        # Request PDF with stream transfer mode
         result = self._send_command(
             "Page.printToPDF",
             {
                 "landscape": False,
                 "printBackground": True,
                 "preferCSSPageSize": True,
-                "scale": self.scale,
                 "paperWidth": paper_width,
                 "paperHeight": paper_height,
                 "marginTop": 0,
                 "marginBottom": 0,
                 "marginLeft": 0,
                 "marginRight": 0,
+                "transferMode": "ReturnAsStream",
             },
         )
+        if not result or "stream" not in result:
+            raise RuntimeError("Failed to capture PDF - no stream handle returned")
 
-        if not result or "data" not in result:
-            raise RuntimeError("Failed to capture PDF")
+        # Read the PDF data in chunks
+        stream_handle = result["stream"]
+        pdf_chunks = []
 
-        return base64.b64decode(result["data"])
+        while True:
+            chunk_result = self._send_command(
+                "IO.read", {"handle": stream_handle, "size": 500000}
+            )
+
+            if not chunk_result:
+                raise RuntimeError("Failed to read PDF stream")
+
+            if "data" in chunk_result:
+                pdf_chunks.append(base64.b64decode(chunk_result["data"]))
+
+            if chunk_result.get("eof", False):
+                break
+
+        # Close the stream
+        self._send_command("IO.close", {"handle": stream_handle})
+
+        # Combine all chunks
+        return b"".join(pdf_chunks)
 
     def check_webgpu_support(self):
         """Check if WebGPU is available and functional in the browser

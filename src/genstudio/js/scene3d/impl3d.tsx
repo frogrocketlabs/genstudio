@@ -12,6 +12,8 @@ import React, {
 } from 'react';
 import { throttle } from '../utils';
 import {$StateContext} from '../context';
+import { useCanvasSnapshot, createCanvasOverlays, removeCanvasOverlays } from '../canvasSnapshot';
+import {genstudio} from '../globals'
 
 import {
   CameraParams,
@@ -37,6 +39,9 @@ function align16(value: number): number {
   return Math.ceil(value / 16) * 16;
 }
 
+// Register screenshot hooks for canvas management
+genstudio.beforePDFHooks.set('scene3d_canvas_snapshot', createCanvasOverlays);
+genstudio.afterPDFHooks.set('scene3d_canvas_snapshot', removeCanvasOverlays);
 
 export interface SceneInnerProps {
   /** Array of 3D components to render in the scene */
@@ -453,7 +458,6 @@ export function SceneInner({
   onFrameRendered,
   onReady
 }: SceneInnerProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const $state = useContext($StateContext);
 
   // We'll store references to the GPU + other stuff in a ref object
@@ -476,8 +480,6 @@ export function SceneInner({
     renderedComponents?: ComponentConfig[];
   } | null>(null);
 
-  const [isReady, setIsReady] = useState(false);
-
   const [internalCamera, setInternalCamera] = useState<CameraState>(() => {
       return createCameraState(defaultCamera);
   });
@@ -499,7 +501,36 @@ export function SceneInner({
         setInternalCamera(newCameraState);
         onCameraChange?.(createCameraParams(newCameraState));
     }
-}, [activeCamera, controlledCamera, onCameraChange]);
+  }, [activeCamera, controlledCamera, onCameraChange]);
+
+  // Create a render callback for the snapshot system
+  const renderToTexture = useCallback((targetTexture: GPUTexture, depthTexture: GPUTexture | null) => {
+    if (!gpuRef.current) return;
+    const { device, uniformBindGroup, renderObjects } = gpuRef.current;
+
+    // Reuse the existing renderPass function with a temporary context
+    const tempContext = {
+      getCurrentTexture: () => targetTexture
+    } as GPUCanvasContext;
+
+    renderPass({
+      device,
+      context: tempContext,
+      depthTexture: depthTexture || null,
+      renderObjects,
+      uniformBindGroup,
+      onRenderComplete: () => {}
+    });
+  }, [containerWidth, containerHeight, activeCamera]);
+
+
+  const { canvasRef } = useCanvasSnapshot(
+    gpuRef.current?.device,
+    gpuRef.current?.context,
+    renderToTexture
+  );
+
+  const [isReady, setIsReady] = useState(false);
 
   const pickingLockRef = useRef(false);
 
@@ -525,19 +556,19 @@ export function SceneInner({
       });
 
       // Add error handling for uncaptured errors
-      device.addEventListener('uncapturederror', (event) => {
-        console.error('Uncaptured WebGPU error:', event.error);
-        // Log additional context about where the error occurred
-        console.error('Error source:', event.error.message);
-        if (event.error.stack) {
-          console.error('Stack trace:', event.error.stack);
+      device.addEventListener('uncapturederror', ((event: Event) => {
+        if (event instanceof GPUUncapturedErrorEvent) {
+          console.error('Uncaptured WebGPU error:', event.error);
+          // Log additional context about where the error occurred
+          console.error('Error source:', event.error.message);
         }
-      });
+      }) as EventListener);
 
       const context = canvasRef.current.getContext('webgpu') as GPUCanvasContext;
       const format = navigator.gpu.getPreferredCanvasFormat();
       context.configure({ device, format, alphaMode:'premultiplied' });
 
+      // Create all the WebGPU resources
       const bindGroupLayout = device.createBindGroupLayout({
         entries: [{
           binding: 0,
@@ -1413,7 +1444,7 @@ export function SceneInner({
 
 
   return (
-    <div style={{ width: '100%', border: '1px solid #ccc' }}>
+    <div style={{ width: '100%', border: '1px solid #ccc', position: 'relative' }}>
         <canvas
             ref={canvasRef}
             style={{border: 'none', ...style}}

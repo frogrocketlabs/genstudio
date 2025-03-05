@@ -7,13 +7,57 @@
 import genstudio.plot as Plot
 from genstudio.scene3d import Ellipsoid
 from pathlib import Path
+import numpy as np
 
 # Create output directory
 output_dir = Path("scratch/export_examples")
 output_dir.mkdir(exist_ok=True, parents=True)
 
 # %% [markdown]
-# ### Static Images
+# ### Save as PDF
+#
+
+# %%
+
+# Create interesting pattern of points using numpy
+
+t = np.linspace(0, 4 * np.pi, 40)
+points = np.column_stack(
+    [
+        t * np.cos(t),  # Spiral x coordinates
+        t * np.sin(t),  # Spiral y coordinates
+    ]
+)
+dots = Plot.dot(points, r=10, fill="steelblue")
+
+ellipsoid_plot = (
+    Plot.initialState({})
+    | Ellipsoid(
+        [0, 0, 0, 1, 1, 1],  # Center position
+        radius=0.5,
+        color=[1, 0, 0],  # Red color
+    )
+    & Ellipsoid(
+        [0, 0, 0, 1, 1, 1],  # Center position
+        radius=0.5,
+        color=[1, 1, 0],
+    )
+    | dots
+    | Plot.html(["div.text-lg", "Hello"])
+)
+
+
+# Save PDFs at different sizes
+ellipsoid_plot.save_pdf(str(output_dir / "ellipsoid_1x500.pdf"), width=500, scale=1)
+ellipsoid_plot.save_pdf(str(output_dir / "ellipsoid_9x1000.pdf"), width=1000, scale=9)
+
+# Save PNGs at different sizes
+ellipsoid_plot.save_image(str(output_dir / "ellipsoid_1x500.png"), width=500, scale=1)
+ellipsoid_plot.save_image(str(output_dir / "ellipsoid_2x1000.png"), width=1000, scale=2)
+
+
+# %% [markdown]
+# ### PNG Images
 #
 # Save a plot as a static image:
 
@@ -111,15 +155,3 @@ if shutil.which("ffmpeg"):
     print(f"Video saved to: {video_path}")
 else:
     print("Note: Video creation requires ffmpeg to be installed")
-
-# %% [markdown]
-# ### PDF Export
-#
-# PDF export is supported via `.save_pdf(...)`, however note that 3d canvas elements will not render.
-
-# %%
-# Create and display a simple scatter plot
-dots = Plot.dot([[1, 1], [2, 2], [3, 3]], r=10, fill="steelblue")
-dots.save_pdf(str(output_dir / "scatter.pdf"), scale=2, width=400)
-
-print(f"PDF saved to: {output_dir / 'scatter.pdf'}")

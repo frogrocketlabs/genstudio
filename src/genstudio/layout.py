@@ -127,8 +127,9 @@ class LayoutItem:
         """Save the plot as a PDF using headless Chrome."""
 
         create_parent_dir(path)
-
-        screenshots.save_pdf(self, width=width, height=height, scale=scale, debug=debug)
+        screenshots.save_pdf(
+            self, path, width=width, height=height, scale=scale, debug=debug
+        )
         print(f"PDF saved to {path}")
 
     def save_images(

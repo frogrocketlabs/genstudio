@@ -255,7 +255,10 @@ class StudioContext(ChromeContext):
         Returns:
             Path to saved PDF if output_path provided, otherwise PDF bytes
         """
+
+        self.evaluate(f"window.genstudio.beforePDF('{self.id}');", await_promise=True)
         pdf_bytes = self.capture_pdf()
+        self.evaluate(f"window.genstudio.afterPDF('{self.id}');", await_promise=True)
 
         if output_path:
             out_path = Path(output_path)
