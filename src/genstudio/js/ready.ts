@@ -7,10 +7,7 @@
  * all components to be ready.
  */
 
-import * as React from 'react';
-import * as globals from './globals'
-
-const DEBUG = true;
+const DEBUG = false;
 
 const log = (...body: any[]) => {
   if (!DEBUG) return;

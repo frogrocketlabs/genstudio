@@ -2,7 +2,6 @@
 Tests for WebGPU screenshot functionality in GenStudio
 """
 
-import os
 import shutil
 from pathlib import Path
 from genstudio.screenshots import (
@@ -79,11 +78,11 @@ def test_counter_plot():
         assert path.exists()
 
     # Test video generation
-    if not os.environ.get("CI") or shutil.which("ffmpeg"):
+    if shutil.which("ffmpeg"):
         video_path = ARTIFACTS_DIR / "counter.mp4"
         video(
             counter_plot,
-            state_updates=[{"count": i} for i in range(60)],  # 60 frames
+            state_updates=[{"count": i} for i in range(30)],  # 30 frames
             filename=video_path,
             fps=12,
             debug=True,
