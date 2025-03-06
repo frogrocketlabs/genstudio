@@ -192,11 +192,16 @@ export interface BaseComponentConfig {
     colorWriteMask?: number;  // Use number instead of GPUColorWrite
   }
 
+export interface GeometryData {
+  vertexData: Float32Array;
+  indexData: Uint16Array | Uint32Array;
+}
+
 export interface GeometryResource {
   vb: GPUBuffer;
   ib: GPUBuffer;
-  indexCount?: number;
-  vertexCount?: number;
+  indexCount: number;
+  vertexCount: number;
 }
 
 export interface GeometryResources {

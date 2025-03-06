@@ -34,7 +34,7 @@ import { createCubeGeometry, createBeamGeometry, createSphereGeometry, createTor
 
 import {packID} from './picking'
 
-import {BaseComponentConfig, Decoration, PipelineCacheEntry, PrimitiveSpec, PipelineConfig, GeometryResource, GeometryResources} from './types'
+import {BaseComponentConfig, Decoration, PipelineCacheEntry, PrimitiveSpec, PipelineConfig, GeometryResource, GeometryData} from './types'
 
   /** Helper function to apply decorations to an array of instances */
 function applyDecorations(
@@ -203,12 +203,6 @@ function createTranslucentGeometryPipeline(
       depthCompare: 'less'
     }
   }, format);
-}
-
-
-interface GeometryData {
-  vertexData: Float32Array;
-  indexData: Uint16Array | Uint32Array;
 }
 
 const createBuffers = (device: GPUDevice, { vertexData, indexData }: GeometryData): GeometryResource => {
