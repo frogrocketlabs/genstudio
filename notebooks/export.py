@@ -12,6 +12,10 @@ import numpy as np
 # Create output directory
 output_dir = Path("scratch/export_examples")
 output_dir.mkdir(exist_ok=True, parents=True)
+# Remove any existing files in output directory
+for file in output_dir.glob("*"):
+    file.unlink()
+
 
 # %% [markdown]
 # ### Save as PDF

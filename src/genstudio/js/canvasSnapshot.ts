@@ -213,8 +213,5 @@ export function removeCanvasOverlays(): void {
   });
 }
 
-// Register PDF export hooks for WebGPU canvas snapshot
-// Before PDF: Creates static image overlays of 3D canvases for PDF capture
-// After PDF: Removes overlays to restore interactive 3D content
-genstudio.beforePDFHooks.set('scene3d_canvas_snapshot', createCanvasOverlays);
-genstudio.afterPDFHooks.set('scene3d_canvas_snapshot', removeCanvasOverlays);
+genstudio.beforePDF = createCanvasOverlays;
+genstudio.afterPDF = removeCanvasOverlays;
