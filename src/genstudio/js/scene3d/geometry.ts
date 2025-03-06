@@ -59,17 +59,17 @@ export function createCubeGeometry() {
   // 6 faces => 24 verts, 36 indices
   const positions: number[] = [
     // +X face (right) - when looking at it from right side
-    0.5, -0.5, -0.5,   0.5, -0.5,  0.5,   0.5,  0.5, -0.5,   0.5,  0.5,  0.5,  // reordered: BL,BR,TL,TR
+    1.0, -1.0, -1.0,   1.0, -1.0,  1.0,   1.0,  1.0, -1.0,   1.0,  1.0,  1.0,  // reordered: BL,BR,TL,TR
     // -X face (left) - when looking at it from left side
-    -0.5, -0.5,  0.5,  -0.5, -0.5, -0.5,  -0.5,  0.5,  0.5,  -0.5,  0.5, -0.5,  // reordered: BL,BR,TL,TR
+    -1.0, -1.0,  1.0,  -1.0, -1.0, -1.0,  -1.0,  1.0,  1.0,  -1.0,  1.0, -1.0,  // reordered: BL,BR,TL,TR
     // +Y face (top) - when looking down at it
-    -0.5,  0.5, -0.5,   0.5,  0.5, -0.5,  -0.5,  0.5,  0.5,   0.5,  0.5,  0.5,  // reordered: BL,BR,TL,TR
+    -1.0,  1.0, -1.0,   1.0,  1.0, -1.0,  -1.0,  1.0,  1.0,   1.0,  1.0,  1.0,  // reordered: BL,BR,TL,TR
     // -Y face (bottom) - when looking up at it
-    -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,  -0.5, -0.5, -0.5,   0.5, -0.5, -0.5,  // reordered: BL,BR,TL,TR
+    -1.0, -1.0,  1.0,   1.0, -1.0,  1.0,  -1.0, -1.0, -1.0,   1.0, -1.0, -1.0,  // reordered: BL,BR,TL,TR
     // +Z face (front) - when looking at front
-    -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,  -0.5,  0.5,  0.5,   0.5,  0.5,  0.5,  // reordered: BL,BR,TL,TR
+    -1.0, -1.0,  1.0,   1.0, -1.0,  1.0,  -1.0,  1.0,  1.0,   1.0,  1.0,  1.0,  // reordered: BL,BR,TL,TR
     // -Z face (back) - when looking at it from behind
-     0.5, -0.5, -0.5,  -0.5, -0.5, -0.5,   0.5,  0.5, -0.5,  -0.5,  0.5, -0.5,  // reordered: BL,BR,TL,TR
+     1.0, -1.0, -1.0,  -1.0, -1.0, -1.0,   1.0,  1.0, -1.0,  -1.0,  1.0, -1.0,  // reordered: BL,BR,TL,TR
   ];
 
   // Normals stay the same as they define face orientation

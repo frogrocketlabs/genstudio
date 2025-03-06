@@ -17,7 +17,7 @@ DEFAULT_CAMERA = {"up": [0, 0, 1], "fov": 45, "near": 0.1, "far": 100}
 print("Test 1: Point Cloud Picking.\nHover over points to highlight them in yellow.")
 
 scene_points = PointCloud(
-    positions=np.array([[-2, 0, 0], [-2, 0, 1], [-2, 1, 0], [-2, 1, 1]]),
+    centers=np.array([[-2, 0, 0], [-2, 0, 1], [-2, 1, 0], [-2, 1, 1]]),
     colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1]]),
     size=0.2,
     alpha=0.7,
@@ -118,7 +118,7 @@ scene_cuboids = Cuboid(
     centers=np.array([[2, 0, 0], [2, 0, 1], [2, 0, 2]]),
     colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
     alphas=np.array([0.5, 0.7, 0.9]),
-    size=0.8,
+    half_size=0.8,
     onHover=js(
         "(i) => $state.update({hover_cuboid: typeof i === 'number' ? [i] : []})"
     ),
@@ -144,7 +144,7 @@ scene_cuboids = Cuboid(
 print("Test 4: Line Beams Picking.\nHover over line segments.")
 
 scene_beams = LineBeams(
-    positions=np.array(
+    points=np.array(
         [
             -2,
             -2,
@@ -206,7 +206,7 @@ mixed_scene = (
         ],
     )
     + PointCloud(
-        positions=np.array([[2, -2, 0], [2, -2, 1]]),
+        centers=np.array([[2, -2, 0], [2, -2, 1]]),
         colors=np.array([[0, 1, 0], [0, 0, 1]]),
         size=0.2,
         onHover=js(
@@ -241,24 +241,24 @@ print(
 x, y, z = np.meshgrid(
     np.linspace(4, 5.5, 4), np.linspace(-2, -0.5, 4), np.linspace(0, 1, 2)
 )
-positions = np.column_stack((x.ravel(), y.ravel(), z.ravel()))
+centers = np.column_stack((x.ravel(), y.ravel(), z.ravel()))
 
 # Generate colors based on position
-colors = np.zeros((len(positions), 3))
-colors[:, 0] = (positions[:, 0] - positions[:, 0].min()) / (
-    positions[:, 0].max() - positions[:, 0].min()
+colors = np.zeros((len(centers), 3))
+colors[:, 0] = (centers[:, 0] - centers[:, 0].min()) / (
+    centers[:, 0].max() - centers[:, 0].min()
 )
-colors[:, 1] = (positions[:, 1] - positions[:, 1].min()) / (
-    positions[:, 1].max() - positions[:, 1].min()
+colors[:, 1] = (centers[:, 1] - centers[:, 1].min()) / (
+    centers[:, 1].max() - centers[:, 1].min()
 )
-colors[:, 2] = (positions[:, 2] - positions[:, 2].min()) / (
-    positions[:, 2].max() - positions[:, 2].min()
+colors[:, 2] = (centers[:, 2] - centers[:, 2].min()) / (
+    centers[:, 2].max() - centers[:, 2].min()
 )
 
 scene_grid_cuboids = Cuboid(
-    centers=positions,
+    centers=centers,
     colors=colors,
-    size=0.3,
+    half_size=0.3,
     alpha=0.85,
     onHover=js(
         "(i) => $state.update({hover_grid_cuboid: typeof i === 'number' ? [i] : []})"

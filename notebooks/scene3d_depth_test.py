@@ -19,7 +19,7 @@ scene_opaque = Ellipsoid(
             [0, 1, 0],
         ]
     ),
-    radius=[0.5, 0.5, 0.5],
+    half_size=[0.5, 0.5, 0.5],
 ) + (
     {
         "defaultCamera": {
@@ -46,7 +46,7 @@ scene_transparent = Ellipsoid(
         ]
     ),
     alphas=np.array([1.0, 0.5]),
-    radius=[0.5, 0.5, 0.5],
+    half_size=[0.5, 0.5, 0.5],
 ) + (
     {
         "defaultCamera": {
@@ -67,10 +67,10 @@ cuboid_component = Cuboid(
     centers=np.array([[-4, 0, 0.5]]),
     colors=np.array([[1, 0.5, 0]]),
     alphas=np.array([0.5]),
-    size=[1, 1, 1],
+    half_size=[1, 1, 1],
 )
 pointcloud_component = PointCloud(
-    positions=np.array([[-4, 0, 0]]),
+    centers=np.array([[-4, 0, 0]]),
     colors=np.array([[0, 1, 1]]),
     alphas=np.array([0.8]),
     size=0.2,
@@ -97,7 +97,7 @@ print(
 )
 
 scene_pc_alpha = PointCloud(
-    positions=np.array([[0, 2, 0], [0, 2, 0.5], [0, 2, 1.0], [0, 2, 1.5]]),
+    centers=np.array([[0, 2, 0], [0, 2, 0.5], [0, 2, 1.0], [0, 2, 1.5]]),
     colors=np.array([[1, 0, 1], [0, 1, 1], [1, 1, 1], [0.5, 0.5, 0.5]]),
     alphas=np.array([1.0, 0.5, 1.0, 0.5]),
     size=0.1,
@@ -123,7 +123,7 @@ scene_deco = Cuboid(
     centers=cuboid_centers,
     colors=cuboid_colors,
     alphas=np.array([1.0, 1.0, 1.0]),
-    size=[0.8, 0.8, 0.8],
+    half_size=[0.8, 0.8, 0.8],
     decorations=[
         # Override instance index 1: change color to red, set alpha to 0.5, and scale up by 1.2.
         deco(1, color=[1.0, 0.0, 0.0], alpha=0.5, scale=1.2)
@@ -149,7 +149,7 @@ scene_extreme = Ellipsoid(
     centers=np.array([[-6, -2, 0], [-6, -2, 0.5]]),
     colors=np.array([[0.2, 0.2, 0.2], [0.9, 0.9, 0.9]]),
     alphas=np.array([0.1, 0.99]),
-    radius=[0.4, 0.4, 0.4],
+    half_size=[0.4, 0.4, 0.4],
 ) + (
     {
         "defaultCamera": {
@@ -170,21 +170,21 @@ mixed_ellipsoids = Ellipsoid(
     centers=np.array([[2, 2, 0.25]]),
     colors=np.array([[1, 0, 0]]),
     alphas=np.array([0.7]),
-    radius=[0.5, 0.5, 0.5],
+    half_size=[0.5, 0.5, 0.5],
 )
 mixed_cuboids = Cuboid(
     centers=np.array([[2, 2, 0]]),
     colors=np.array([[0, 1, 0]]),
     alphas=np.array([0.7]),
-    size=[1, 1, 1],
+    half_size=[1, 1, 1],
 )
 mixed_linebeams = LineBeams(
-    positions=np.array([2, 2, -0.5, 0, 2, 2, 1, 0], dtype=np.float32),
+    points=np.array([2, 2, -0.5, 0, 2, 2, 1, 0], dtype=np.float32),
     color=np.array([1, 1, 0]),
     size=0.05,
 )
 mixed_pointcloud = PointCloud(
-    positions=np.array([[2, 2, -0.25], [2, 2, 0.75]]),
+    centers=np.array([[2, 2, -0.25], [2, 2, 0.75]]),
     colors=np.array([[0, 0, 1], [1, 0, 1]]),
     alphas=np.array([1.0, 0.8]),
     size=0.1,
@@ -209,13 +209,13 @@ print(
 )
 
 pointcloud_component1 = PointCloud(
-    positions=np.array([[-2, 2, 0.2]]),
+    centers=np.array([[-2, 2, 0.2]]),
     colors=np.array([[0, 0.5, 0]]),
     size=0.15,
     alpha=0.5,
 )
 pointcloud_component2 = PointCloud(
-    positions=np.array([[-2, 2, 0]]),
+    centers=np.array([[-2, 2, 0]]),
     colors=np.array([[0.5, 0, 0.5]]),
     size=0.15,
     alpha=0.5,

@@ -65,14 +65,14 @@ def create_morphing_ellipsoids(
     n_ellipsoids=300, n_frames=60
 ):  # More frames for smoother motion
     """
-    Generate per-frame positions/radii for a segmented insect-like creature.
+    Generate per-frame positions/half_sizes for a segmented insect-like creature.
     Each ellipsoid represents one body segment that follows the segment in front of it,
     like train cars following a track. The creature moves in a curved path,
     like a snake chasing but never catching its tail.
 
     Returns:
         centers_frames: shape (n_frames, n_ellipsoids, 3)
-        radii_frames:   shape (n_frames, n_ellipsoids, 3)
+        half_sizes_frames:   shape (n_frames, n_ellipsoids, 3)
         colors:         shape (n_ellipsoids, 3)
     """
     # Each ellipsoid is a body segment
@@ -84,7 +84,7 @@ def create_morphing_ellipsoids(
     colors[:] = np.column_stack([0.2 + 0.1 * t, 0.2 + 0.05 * t, 0.1 + 0.05 * t])
 
     centers_frames = np.zeros((n_frames, n_segments, 3), dtype=np.float32)
-    radii_frames = np.zeros((n_frames, n_segments, 3), dtype=np.float32)
+    half_sizes_frames = np.zeros((n_frames, n_segments, 3), dtype=np.float32)
 
     # Path parameters
     path_radius = 3.0  # Size of spiral path
@@ -118,13 +118,13 @@ def create_morphing_ellipsoids(
             base_size = 0.3 * body_taper
 
             # Segments are elongated horizontally
-            radii_frames[frame_i, i] = [
+            half_sizes_frames[frame_i, i] = [
                 base_size * 1.2,  # length
                 base_size * 0.8,  # width
                 base_size * 0.7,  # height
             ]
 
-    return centers_frames, radii_frames, colors
+    return centers_frames, half_sizes_frames, colors
 
 
 # ----------------- Putting it all together in a Plot -----------------
@@ -141,8 +141,8 @@ def create_ripple_and_morph_scene():
     grid_xyz_frames, grid_rgb = create_ripple_grid(n_frames=n_frames)
 
     # 2. Generate data for morphing ellipsoids
-    ellipsoid_centers, ellipsoid_radii, ellipsoid_colors = create_morphing_ellipsoids(
-        n_frames=n_frames
+    ellipsoid_centers, ellipsoid_half_sizes, ellipsoid_colors = (
+        create_morphing_ellipsoids(n_frames=n_frames)
     )
 
     # We'll set up a default camera that can see everything nicely
@@ -161,7 +161,7 @@ def create_ripple_and_morph_scene():
 
     # First scene: the ripple grid
     scene_grid = PointCloud(
-        positions=js("$state.grid_xyz[$state.frame]"),
+        centers=js("$state.grid_xyz[$state.frame]"),
         colors=js("$state.grid_rgb"),
         size=0.01,  # each point scale
         onHover=js("(i) => $state.update({hover_point: i})"),
@@ -181,7 +181,7 @@ def create_ripple_and_morph_scene():
     # Second scene: the morphing ellipsoids with opacity decorations
     scene_ellipsoids = Ellipsoid(
         centers=js("$state.ellipsoid_centers[$state.frame]"),
-        radii=js("$state.ellipsoid_radii[$state.frame]"),
+        half_sizes=js("$state.ellipsoid_half_sizes[$state.frame]"),
         colors=js("$state.ellipsoid_colors"),
         decorations=[
             # Vary opacity based on position in snake
@@ -215,7 +215,7 @@ def create_ripple_and_morph_scene():
                 "ellipsoid_centers": ellipsoid_centers.reshape(
                     n_frames, -1
                 ),  # Flatten to (n_frames, n_ellipsoids*3)
-                "ellipsoid_radii": ellipsoid_radii.reshape(
+                "ellipsoid_half_sizes": ellipsoid_half_sizes.reshape(
                     n_frames, -1
                 ),  # Flatten to (n_frames, n_ellipsoids*3)
                 "ellipsoid_colors": ellipsoid_colors.flatten(),  # Flatten to (n_ellipsoids*3,)

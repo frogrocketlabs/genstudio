@@ -15,7 +15,7 @@ def create_demo_scene():
     z = t / 10
 
     # Create positions array
-    positions = np.column_stack([x, y, z])
+    centers = np.column_stack([x, y, z])
 
     # Create rainbow colors
     hue = t / t.max()
@@ -33,7 +33,7 @@ def create_demo_scene():
     # Create the base scene with shared elements
     base_scene = (
         PointCloud(
-            positions,
+            centers,
             colors,
             sizes,
             onHover=Plot.js("(i) => $state.update({hover_point: i})"),
@@ -51,7 +51,7 @@ def create_demo_scene():
         # Ellipsoids with one highlighted
         Ellipsoid(
             centers=np.array([[0.5, 0.5, 0.5], [-0.5, -0.5, 0.5], [0.0, 0.0, 0.0]]),
-            radii=np.array([[0.1, 0.2, 0.1], [0.2, 0.1, 0.1], [0.15, 0.15, 0.15]]),
+            half_sizes=np.array([[0.1, 0.2, 0.1], [0.2, 0.1, 0.1], [0.15, 0.15, 0.15]]),
             colors=np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
             decorations=[deco([1], color=[1, 1, 0], alpha=0.8)],
         )
@@ -59,7 +59,7 @@ def create_demo_scene():
         # Ellipsoid bounds with transparency
         EllipsoidAxes(
             centers=np.array([[0.8, 0.0, 0.0], [-0.8, 0.0, 0.0]]),
-            radii=np.array([[0.2, 0.1, 0.1], [0.1, 0.2, 0.1]]),
+            half_sizes=np.array([[0.2, 0.1, 0.1], [0.1, 0.2, 0.1]]),
             colors=np.array([[1.0, 0.5, 0.0], [0.0, 0.5, 1.0]]),
             decorations=[deco([0, 1], alpha=0.5)],
         )

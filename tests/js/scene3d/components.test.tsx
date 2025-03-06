@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
 import { render, act } from '@testing-library/react';
 import React from 'react';
 import { SceneInner } from '../../../src/genstudio/js/scene3d/impl3d';
-import type { ComponentConfig } from '../../../src/genstudio/js/scene3d/components';
+import type { ComponentConfig, PointCloudComponentConfig } from '../../../src/genstudio/js/scene3d/components';
 import { setupWebGPU, cleanupWebGPU } from '../webgpu-setup';
 import { withBlankState } from '../test-utils';
 
@@ -115,7 +115,7 @@ describe('Scene3D Components', () => {
     it('should render point cloud with basic properties', async () => {
       const components: ComponentConfig[] = [{
         type: 'PointCloud',
-        positions: new Float32Array([0, 0, 0, 1, 1, 1]),
+        centers: new Float32Array([0, 0, 0, 1, 1, 1]),
         colors: new Float32Array([1, 0, 0, 0, 1, 0])
       }];
 
@@ -139,13 +139,13 @@ describe('Scene3D Components', () => {
 
       // Verify correct buffer sizes
       const bufferCalls = createBuffer.mock.calls;
-      expect(bufferCalls.some(call => call[0].size >= components[0].positions.byteLength)).toBe(true);
+      expect(bufferCalls.some(call => call[0].size >= (components[0] as PointCloudComponentConfig).centers.byteLength)).toBe(true);
     });
 
     it('should handle alpha blending correctly', async () => {
       const components: ComponentConfig[] = [{
         type: 'PointCloud',
-        positions: new Float32Array([0, 0, 0]),
+        centers: new Float32Array([0, 0, 0]),
         colors: new Float32Array([1, 0, 0]),
         alpha: 0.5
       }];
@@ -169,7 +169,7 @@ describe('Scene3D Components', () => {
     it('should update when positions change', async () => {
       const initialComponents: ComponentConfig[] = [{
         type: 'PointCloud',
-        positions: new Float32Array([0, 0, 0]),
+        centers: new Float32Array([0, 0, 0]),
         colors: new Float32Array([1, 0, 0])
       }];
 
@@ -191,7 +191,7 @@ describe('Scene3D Components', () => {
       // Update positions
       const updatedComponents: ComponentConfig[] = [{
         type: 'PointCloud',
-        positions: new Float32Array([1, 1, 1]),
+        centers: new Float32Array([1, 1, 1]),
         colors: new Float32Array([1, 0, 0])
       }];
 
@@ -215,7 +215,7 @@ describe('Scene3D Components', () => {
       const components: ComponentConfig[] = [{
         type: 'Ellipsoid',
         centers: new Float32Array([0, 0, 0]),
-        radii: new Float32Array([1, 1, 1])
+        half_sizes: new Float32Array([1, 1, 1])
       }];
 
       await act(async () => {
@@ -241,7 +241,7 @@ describe('Scene3D Components', () => {
       const components: ComponentConfig[] = [{
         type: 'Ellipsoid',
         centers: new Float32Array([0, 0, 0]),
-        radii: new Float32Array([1, 2, 3])
+        half_sizes: new Float32Array([1, 2, 3])
       }];
 
       await act(async () => {
@@ -260,6 +260,118 @@ describe('Scene3D Components', () => {
 
       // Verify that the scale data was written correctly
       // This might need adjustment based on your actual buffer layout
+      expect(bufferData.some(data => data instanceof Float32Array)).toBe(true);
+    });
+  });
+
+  describe('Cuboid', () => {
+    it('should render cuboid with basic properties', async () => {
+      const components: ComponentConfig[] = [{
+        type: 'Cuboid',
+        centers: new Float32Array([0, 0, 0]),
+        sizes: new Float32Array([1, 1, 1]),
+        colors: new Float32Array([1, 0, 0])
+      }];
+
+      await act(async () => {
+        render(
+          <WrappedSceneInner
+            components={components}
+            containerWidth={800}
+            containerHeight={600}
+            onReady={vi.fn()}
+          />
+        );
+      });
+
+      const createBuffer = mockDevice.createBuffer as Mock;
+      const writeBuffer = mockQueue.writeBuffer as Mock;
+
+      expect(createBuffer).toHaveBeenCalled();
+      expect(writeBuffer).toHaveBeenCalled();
+    });
+
+    it('should handle non-uniform scaling and alpha', async () => {
+      const components: ComponentConfig[] = [{
+        type: 'Cuboid',
+        centers: new Float32Array([0, 0, 0]),
+        sizes: new Float32Array([1, 2, 3]),
+        colors: new Float32Array([1, 0, 0]),
+        alphas: new Float32Array([0.5])
+      }];
+
+      await act(async () => {
+        render(
+          <WrappedSceneInner
+            components={components}
+            containerWidth={800}
+            containerHeight={600}
+            onReady={vi.fn()}
+          />
+        );
+      });
+
+      const writeBuffer = mockQueue.writeBuffer as Mock;
+      expect(writeBuffer).toHaveBeenCalled();
+    });
+  });
+
+  describe('LineBeams', () => {
+    it('should render line beams with basic properties', async () => {
+      const components: ComponentConfig[] = [{
+        type: 'LineBeams',
+        points: new Float32Array([0, 0, 0, 1, 1, 1]),  // Two points defining a line
+        colors: new Float32Array([1, 0, 0, 0, 1, 0])   // Colors for start and end points
+      }];
+
+      await act(async () => {
+        render(
+          <WrappedSceneInner
+            components={components}
+            containerWidth={800}
+            containerHeight={600}
+            onReady={vi.fn()}
+          />
+        );
+      });
+
+      const createBuffer = mockDevice.createBuffer as Mock;
+      const writeBuffer = mockQueue.writeBuffer as Mock;
+
+      expect(createBuffer).toHaveBeenCalled();
+      expect(writeBuffer).toHaveBeenCalled();
+    });
+
+    it('should handle multiple line segments', async () => {
+      const components: ComponentConfig[] = [{
+        type: 'LineBeams',
+        points: new Float32Array([
+          0, 0, 0,  // First line start
+          1, 1, 1,  // First line end
+          2, 2, 2,  // Second line start
+          3, 3, 3   // Second line end
+        ]),
+        colors: new Float32Array([
+          1, 0, 0,  // First line start color
+          0, 1, 0,  // First line end color
+          0, 0, 1,  // Second line start color
+          1, 1, 0   // Second line end color
+        ])
+      }];
+
+      await act(async () => {
+        render(
+          <WrappedSceneInner
+            components={components}
+            containerWidth={800}
+            containerHeight={600}
+            onReady={vi.fn()}
+          />
+        );
+      });
+
+      const writeBuffer = mockQueue.writeBuffer as Mock;
+      const bufferData = writeBuffer.mock.calls.map(call => call[2]);
       expect(bufferData.some(data => data instanceof Float32Array)).toBe(true);
     });
   });

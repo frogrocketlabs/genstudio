@@ -77,7 +77,7 @@ function applyDecorations(
 
 export interface PointCloudComponentConfig extends BaseComponentConfig {
   type: 'PointCloud';
-  positions: Float32Array;
+  centers: Float32Array;
   sizes?: Float32Array;     // Per-point sizes
   size?: number;           // Default size, defaults to 0.02
 }
@@ -240,7 +240,7 @@ const createBuffers = (device: GPUDevice, { vertexData, indexData }: GeometryDat
 export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
   type: 'PointCloud',
   getCount(elem) {
-    return elem.positions.length / 3;
+    return elem.centers.length / 3;
   },
 
   getFloatsPerInstance() {
@@ -252,11 +252,11 @@ export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
   },
 
   getCenters(elem) {
-    return elem.positions;
+    return elem.centers;
   },
 
   buildRenderData(elem, target, sortedIndices?: Uint32Array) {
-    const count = elem.positions.length / 3;
+    const count = elem.centers.length / 3;
     if(count === 0) return false;
 
     const defaults = getBaseDefaults(elem);
@@ -270,9 +270,9 @@ export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
     for(let j = 0; j < count; j++) {
       const i = indices ? indices[j] : j;
       // Position
-      target[j*8+0] = elem.positions[i*3+0];
-      target[j*8+1] = elem.positions[i*3+1];
-      target[j*8+2] = elem.positions[i*3+2];
+      target[j*8+0] = elem.centers[i*3+0];
+      target[j*8+1] = elem.centers[i*3+1];
+      target[j*8+2] = elem.centers[i*3+2];
 
       // Size
       const pointSize = sizes ? sizes[i] : size;
@@ -314,7 +314,7 @@ export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
   },
 
   buildPickingData(elem: PointCloudComponentConfig, target: Float32Array, baseID: number, sortedIndices?: Uint32Array): void {
-    const count = elem.positions.length / 3;
+    const count = elem.centers.length / 3;
     if(count === 0) return;
 
     const size = elem.size ?? 0.02;
@@ -326,9 +326,9 @@ export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
     for(let j = 0; j < count; j++) {
       const i = indices ? indices[j] : j;
       // Position
-      target[j*5+0] = elem.positions[i*3+0];
-      target[j*5+1] = elem.positions[i*3+1];
-      target[j*5+2] = elem.positions[i*3+2];
+      target[j*5+0] = elem.centers[i*3+0];
+      target[j*5+1] = elem.centers[i*3+1];
+      target[j*5+2] = elem.centers[i*3+2];
       // Size
       const pointSize = sizes?.[i] ?? size;
       const scale = scales ? scales[i] : 1.0;
@@ -423,8 +423,8 @@ export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
 export interface EllipsoidComponentConfig extends BaseComponentConfig {
   type: 'Ellipsoid';
   centers: Float32Array;
-  radii?: Float32Array;     // Per-ellipsoid radii
-  radius?: [number, number, number]; // Default radius, defaults to [1,1,1]
+  half_sizes?: Float32Array;     // Per-ellipsoid half_sizes
+  half_size?: [number, number, number]; // Default half_size, defaults to [1,1,1]
 }
 
 export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
@@ -450,8 +450,8 @@ export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
     const defaults = getBaseDefaults(elem);
     const { colors, alphas, scales } = getColumnarParams(elem, count);
 
-    const defaultRadius = elem.radius ?? [1, 1, 1];
-    const radii = elem.radii && elem.radii.length >= count * 3 ? elem.radii : null;
+    const defaultRadius = elem.half_size ?? [1, 1, 1];
+    const half_sizes = elem.half_sizes && elem.half_sizes.length >= count * 3 ? elem.half_sizes : null;
 
     const {indices, indexToPosition} = getIndicesAndMapping(count, sortedIndices);
 
@@ -464,12 +464,12 @@ export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
       target[offset+1] = elem.centers[i*3+1];
       target[offset+2] = elem.centers[i*3+2];
 
-      // Size/radii (location 3)
+      // Size/half_sizes (location 3)
       const scale = scales ? scales[i] : defaults.scale;
-      if(radii) {
-        target[offset+3] = radii[i*3+0] * scale;
-        target[offset+4] = radii[i*3+1] * scale;
-        target[offset+5] = radii[i*3+2] * scale;
+      if(half_sizes) {
+        target[offset+3] = half_sizes[i*3+0] * scale;
+        target[offset+4] = half_sizes[i*3+1] * scale;
+        target[offset+5] = half_sizes[i*3+2] * scale;
       } else {
         target[offset+3] = defaultRadius[0] * scale;
         target[offset+4] = defaultRadius[1] * scale;
@@ -517,8 +517,8 @@ export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
     const count = elem.centers.length / 3;
     if(count === 0) return;
 
-    const defaultSize = elem.radius || [0.1, 0.1, 0.1];
-    const sizes = elem.radii && elem.radii.length >= count * 3 ? elem.radii : null;
+    const defaultSize = elem.half_size || [0.1, 0.1, 0.1];
+    const sizes = elem.half_sizes && elem.half_sizes.length >= count * 3 ? elem.half_sizes : null;
     const { scales } = getColumnarParams(elem, count);
     const { indices, indexToPosition } = getIndicesAndMapping(count, sortedIndices);
 
@@ -595,8 +595,8 @@ export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
 export interface EllipsoidAxesComponentConfig extends BaseComponentConfig {
   type: 'EllipsoidAxes';
   centers: Float32Array;
-  radii?: Float32Array;
-  radius?: [number, number, number];  // Make optional since we have BaseComponentConfig defaults
+  half_sizes?: Float32Array;
+  half_size?: [number, number, number];  // Make optional since we have BaseComponentConfig defaults
   colors?: Float32Array;
 }
 
@@ -624,8 +624,8 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
     const defaults = getBaseDefaults(elem);
     const { colors, alphas, scales } = getColumnarParams(elem, count);
 
-    const defaultRadius = elem.radius ?? [1, 1, 1];
-    const radii = elem.radii instanceof Float32Array && elem.radii.length >= count * 3 ? elem.radii : null;
+    const defaultRadius = elem.half_size ?? [1, 1, 1];
+    const half_sizes = elem.half_sizes instanceof Float32Array && elem.half_sizes.length >= count * 3 ? elem.half_sizes : null;
 
     const {indices, indexToPosition} = getIndicesAndMapping(count, sortedIndices);
 
@@ -639,12 +639,12 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
       target[offset+1] = elem.centers[i*3+1];
       target[offset+2] = elem.centers[i*3+2];
 
-      // Size/radii (location 3)
+      // Size/half_sizes (location 3)
       const scale = scales ? scales[i] : defaults.scale;
-      if(radii) {
-        target[offset+3] = radii[i*3+0] * scale;
-        target[offset+4] = radii[i*3+1] * scale;
-        target[offset+5] = radii[i*3+2] * scale;
+      if(half_sizes) {
+        target[offset+3] = half_sizes[i*3+0] * scale;
+        target[offset+4] = half_sizes[i*3+1] * scale;
+        target[offset+5] = half_sizes[i*3+2] * scale;
       } else {
         target[offset+3] = defaultRadius[0] * scale;
         target[offset+4] = defaultRadius[1] * scale;
@@ -695,7 +695,7 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
     const count = elem.centers.length / 3;
     if(count === 0) return;
 
-    const defaultRadius = elem.radius ?? [1, 1, 1];
+    const defaultRadius = elem.half_size ?? [1, 1, 1];
 
     const { indices, indexToPosition } = getIndicesAndMapping(count, sortedIndices);
 
@@ -704,9 +704,9 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
       const cx = elem.centers[i*3+0];
       const cy = elem.centers[i*3+1];
       const cz = elem.centers[i*3+2];
-      const rx = elem.radii?.[i*3+0] ?? defaultRadius[0];
-      const ry = elem.radii?.[i*3+1] ?? defaultRadius[1];
-      const rz = elem.radii?.[i*3+2] ?? defaultRadius[2];
+      const rx = elem.half_sizes?.[i*3+0] ?? defaultRadius[0];
+      const ry = elem.half_sizes?.[i*3+1] ?? defaultRadius[1];
+      const rz = elem.half_sizes?.[i*3+2] ?? defaultRadius[2];
       const thisID = packID(baseID + i);
 
       for(let ring = 0; ring < 3; ring++) {
@@ -782,8 +782,8 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
 export interface CuboidComponentConfig extends BaseComponentConfig {
   type: 'Cuboid';
   centers: Float32Array;
-  sizes: Float32Array;
-  size?: [number, number, number];
+  half_sizes: Float32Array;
+  half_size?: [number, number, number];
 }
 
 export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
@@ -807,8 +807,8 @@ export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
     const { colors, alphas, scales } = getColumnarParams(elem, count);
     const { indices, indexToPosition } = getIndicesAndMapping(count, sortedIndices);
 
-    const defaultSize = elem.size || [0.1, 0.1, 0.1];
-    const sizes = elem.sizes && elem.sizes.length >= count * 3 ? elem.sizes : null;
+    const defaultHalfSize = elem.half_size || [0.1, 0.1, 0.1];
+    const half_sizes = elem.half_sizes && elem.half_sizes.length >= count * 3 ? elem.half_sizes : null;
 
     for(let j = 0; j < count; j++) {
       const i = indices ? indices[j] : j;
@@ -817,10 +817,10 @@ export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
       const cz = elem.centers[i*3+2];
       const scale = scales ? scales[i] : defaults.scale;
 
-      // Get sizes with scale
-      const sx = (sizes ? sizes[i*3+0] : defaultSize[0]) * scale;
-      const sy = (sizes ? sizes[i*3+1] : defaultSize[1]) * scale;
-      const sz = (sizes ? sizes[i*3+2] : defaultSize[2]) * scale;
+      // Get half_sizes with scale
+      const sx = (half_sizes ? half_sizes[i*3+0] : defaultHalfSize[0]) * scale;
+      const sy = (half_sizes ? half_sizes[i*3+1] : defaultHalfSize[1]) * scale;
+      const sz = (half_sizes ? half_sizes[i*3+2] : defaultHalfSize[2]) * scale;
 
       // Get colors
       let cr: number, cg: number, cb: number;
@@ -873,8 +873,8 @@ export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
     const count = elem.centers.length / 3;
     if(count === 0) return;
 
-    const defaultSize = elem.size || [0.1, 0.1, 0.1];
-    const sizes = elem.sizes && elem.sizes.length >= count * 3 ? elem.sizes : null;
+    const defaultHalfSize = elem.half_size || [0.1, 0.1, 0.1];
+    const half_sizes = elem.half_sizes && elem.half_sizes.length >= count * 3 ? elem.half_sizes : null;
     const { scales } = getColumnarParams(elem, count);
     const { indices, indexToPosition } = getIndicesAndMapping(count, sortedIndices);
 
@@ -886,9 +886,9 @@ export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
       target[j*7+1] = elem.centers[i*3+1];
       target[j*7+2] = elem.centers[i*3+2];
       // Size
-      target[j*7+3] = (sizes ? sizes[i*3+0] : defaultSize[0]) * scale;
-      target[j*7+4] = (sizes ? sizes[i*3+1] : defaultSize[1]) * scale;
-      target[j*7+5] = (sizes ? sizes[i*3+2] : defaultSize[2]) * scale;
+      target[j*7+3] = (half_sizes ? half_sizes[i*3+0] : defaultHalfSize[0]) * scale;
+      target[j*7+4] = (half_sizes ? half_sizes[i*3+1] : defaultHalfSize[1]) * scale;
+      target[j*7+5] = (half_sizes ? half_sizes[i*3+2] : defaultHalfSize[2]) * scale;
       // Picking ID
       target[j*7+6] = packID(baseID + i);
     }
@@ -950,19 +950,19 @@ export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
 
 export interface LineBeamsComponentConfig extends BaseComponentConfig {
   type: 'LineBeams';
-  positions: Float32Array;  // [x,y,z,i, x,y,z,i, ...]
+  points: Float32Array;  // [x,y,z,i, x,y,z,i, ...]
   sizes?: Float32Array;     // Per-line sizes
   size?: number;         // Default size, defaults to 0.02
 }
 
-function countSegments(positions: Float32Array): number {
-  const pointCount = positions.length / 4;
+function countSegments(points: Float32Array): number {
+  const pointCount = points.length / 4;
   if (pointCount < 2) return 0;
 
   let segCount = 0;
   for (let p = 0; p < pointCount - 1; p++) {
-    const iCurr = positions[p * 4 + 3];
-    const iNext = positions[(p+1) * 4 + 3];
+    const iCurr = points[p * 4 + 3];
+    const iNext = points[(p+1) * 4 + 3];
     if (iCurr === iNext) {
       segCount++;
     }
@@ -973,23 +973,23 @@ function countSegments(positions: Float32Array): number {
 export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
   type: 'LineBeams',
   getCount(elem) {
-    return countSegments(elem.positions);
+    return countSegments(elem.points);
   },
 
   getCenters(elem) {
     const segCount = this.getCount(elem);
         const centers = new Float32Array(segCount * 3);
         let segIndex = 0;
-        const pointCount = elem.positions.length / 4;
+        const pointCount = elem.points.length / 4;
 
         for(let p = 0; p < pointCount - 1; p++) {
-          const iCurr = elem.positions[p * 4 + 3];
-          const iNext = elem.positions[(p+1) * 4 + 3];
+          const iCurr = elem.points[p * 4 + 3];
+          const iNext = elem.points[(p+1) * 4 + 3];
           if(iCurr !== iNext) continue;
 
-          centers[segIndex*3+0] = (elem.positions[p*4+0] + elem.positions[(p+1)*4+0]) * 0.5;
-          centers[segIndex*3+1] = (elem.positions[p*4+1] + elem.positions[(p+1)*4+1]) * 0.5;
-          centers[segIndex*3+2] = (elem.positions[p*4+2] + elem.positions[(p+1)*4+2]) * 0.5;
+          centers[segIndex*3+0] = (elem.points[p*4+0] + elem.points[(p+1)*4+0]) * 0.5;
+          centers[segIndex*3+1] = (elem.points[p*4+1] + elem.points[(p+1)*4+1]) * 0.5;
+          centers[segIndex*3+2] = (elem.points[p*4+2] + elem.points[(p+1)*4+2]) * 0.5;
           segIndex++;
         }
         return centers
@@ -1014,10 +1014,10 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
     const segmentMap = new Array(segCount);
     let segIndex = 0;
 
-    const pointCount = elem.positions.length / 4;
+    const pointCount = elem.points.length / 4;
       for(let p = 0; p < pointCount - 1; p++) {
-        const iCurr = elem.positions[p * 4 + 3];
-        const iNext = elem.positions[(p+1) * 4 + 3];
+        const iCurr = elem.points[p * 4 + 3];
+        const iNext = elem.points[(p+1) * 4 + 3];
         if(iCurr !== iNext) continue;
 
         // Store mapping from segment index to point index
@@ -1033,17 +1033,17 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
     for(let j = 0; j < segCount; j++) {
       const i = indices ? indices[j] : j;
       const p = segmentMap[i];
-      const lineIndex = Math.floor(elem.positions[p * 4 + 3]);
+      const lineIndex = Math.floor(elem.points[p * 4 + 3]);
 
       // Start point
-      target[j*11+0] = elem.positions[p * 4 + 0];
-      target[j*11+1] = elem.positions[p * 4 + 1];
-      target[j*11+2] = elem.positions[p * 4 + 2];
+      target[j*11+0] = elem.points[p * 4 + 0];
+      target[j*11+1] = elem.points[p * 4 + 1];
+      target[j*11+2] = elem.points[p * 4 + 2];
 
       // End point
-      target[j*11+3] = elem.positions[(p+1) * 4 + 0];
-      target[j*11+4] = elem.positions[(p+1) * 4 + 1];
-      target[j*11+5] = elem.positions[(p+1) * 4 + 2];
+      target[j*11+3] = elem.points[(p+1) * 4 + 0];
+      target[j*11+4] = elem.points[(p+1) * 4 + 1];
+      target[j*11+5] = elem.points[(p+1) * 4 + 2];
 
       // Size with scale
       const scale = scales ? scales[lineIndex] : defaults.scale;
@@ -1092,10 +1092,10 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
     const segmentMap = new Array(segCount);
     let segIndex = 0;
 
-    const pointCount = elem.positions.length / 4;
+    const pointCount = elem.points.length / 4;
     for(let p = 0; p < pointCount - 1; p++) {
-      const iCurr = elem.positions[p * 4 + 3];
-      const iNext = elem.positions[(p+1) * 4 + 3];
+      const iCurr = elem.points[p * 4 + 3];
+      const iNext = elem.points[(p+1) * 4 + 3];
       if(iCurr !== iNext) continue;
 
       // Store mapping from segment index to point index
@@ -1108,7 +1108,7 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
     for(let j = 0; j < segCount; j++) {
       const i = indices ? indices[j] : j;
       const p = segmentMap[i];
-      const lineIndex = Math.floor(elem.positions[p * 4 + 3]);
+      const lineIndex = Math.floor(elem.points[p * 4 + 3]);
       let size = elem.sizes?.[lineIndex] ?? defaultSize;
       const scale = elem.scales?.[lineIndex] ?? 1.0;
 
@@ -1123,12 +1123,12 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
       });
 
       const base = j * 8;
-      target[base + 0] = elem.positions[p * 4 + 0];     // start.x
-      target[base + 1] = elem.positions[p * 4 + 1];     // start.y
-      target[base + 2] = elem.positions[p * 4 + 2];     // start.z
-      target[base + 3] = elem.positions[(p+1) * 4 + 0]; // end.x
-      target[base + 4] = elem.positions[(p+1) * 4 + 1]; // end.y
-      target[base + 5] = elem.positions[(p+1) * 4 + 2]; // end.z
+      target[base + 0] = elem.points[p * 4 + 0];     // start.x
+      target[base + 1] = elem.points[p * 4 + 1];     // start.y
+      target[base + 2] = elem.points[p * 4 + 2];     // start.z
+      target[base + 3] = elem.points[(p+1) * 4 + 0]; // end.x
+      target[base + 4] = elem.points[(p+1) * 4 + 1]; // end.y
+      target[base + 5] = elem.points[(p+1) * 4 + 2]; // end.z
       target[base + 6] = size;                        // size
       target[base + 7] = packID(baseID + i);
     }

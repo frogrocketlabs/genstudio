@@ -22,7 +22,7 @@ import numpy as np
 # %%
 # Define some 3D positions and corresponding colors.
 
-positions = np.array(
+centers = np.array(
     [
         [-0.5, -0.5, -0.5],
         [0.5, -0.5, -0.5],
@@ -52,7 +52,7 @@ colors = np.array(
 
 # Create the point cloud component.
 point_cloud = PointCloud(
-    positions=positions,
+    centers=centers,
     colors=colors,
     size=0.1,  # Default size for all points
 )
@@ -80,7 +80,7 @@ scene_pc
 # %%
 
 # Create a point cloud of 100 particles in a tight 3D Gaussian distribution
-gaussian_points = np.random.normal(loc=[1.0, 1.5, 0], scale=0.2, size=(100, 3)).astype(
+gaussian_centers = np.random.normal(loc=[1.0, 1.5, 0], scale=0.2, size=(100, 3)).astype(
     np.float32
 )
 # Generate random colors between purple [1,0,1] and cyan [0,1,1]
@@ -88,9 +88,7 @@ gaussian_colors = np.random.uniform(
     low=[0, 0, 1], high=[1, 1, 1], size=(100, 3)
 ).astype(np.float32)
 
-gaussian_cloud = PointCloud(
-    positions=gaussian_points, colors=gaussian_colors, size=0.03
-)
+gaussian_cloud = PointCloud(centers=gaussian_centers, colors=gaussian_colors, size=0.03)
 
 # Create an ellipsoid component
 (
@@ -99,7 +97,7 @@ gaussian_cloud = PointCloud(
             [0, 0, 0],
             [1.5, 0, 0],
         ],
-        radius=[0.5, 0.5, 0.5],  # Can be a single value or a list per instance
+        half_size=[0.5, 0.5, 0.5],  # Can be a single value or a list per instance
         colors=np.array(
             [
                 [0, 1, 1],  # cyan
@@ -114,21 +112,21 @@ gaussian_cloud = PointCloud(
 # Create a wireframe ellipsoid
 wireframe = EllipsoidAxes(
     centers=[[0, 0, 0]],
-    radius=[0.7, 0.7, 0.7],
+    half_size=[0.7, 0.7, 0.7],
     color=[1, 1, 1],  # white
 )
 
 # Create a cuboid component
 cuboid = Cuboid(
     centers=np.array([[0, 2, 0.5]], dtype=np.float32),
-    size=[1, 1, 1],
+    half_size=[0.5, 0.5, 0.5],
     color=[1, 0.5, 0],  # orange
     alpha=0.8,
 )
 
 # Create line beams connecting points to form letter A
 beams = LineBeams(
-    positions=np.array(
+    points=np.array(
         [
             # Outer segments of A (i=0)
             1.5,
@@ -199,9 +197,9 @@ from genstudio.scene3d import PointCloud
 import numpy as np
 
 # Create a point cloud with 100 points
-positions = np.random.normal(0, 1, (100, 3))
+centers = np.random.normal(0, 1, (100, 3))
 cloud = PointCloud(
-    positions=positions,
+    centers=centers,
     color=[0.5, 0.5, 0.5],  # Default gray color
     size=0.05,  # Default size
     decorations=[
@@ -241,7 +239,7 @@ cuboid_centers = np.array(
     | Cuboid(
         centers=cuboid_centers,
         color=[1.0, 1.0, 0.0],  # yellow
-        size=[0.8, 0.8, 0.8],
+        half_size=[0.4, 0.4, 0.4],
         alpha=0.5,
         onHover=Plot.js("(index) => $state.update({'hovered': index})"),
         decorations=[

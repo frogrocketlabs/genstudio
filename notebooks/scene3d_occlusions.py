@@ -20,7 +20,7 @@ def create_demo_scene():
     z = np.zeros(n_points)
 
     # Create positions array
-    positions = np.column_stack([x, y, z])
+    centers = np.column_stack([x, y, z])
 
     # Create uniform colors for visibility
     colors = np.tile([0.0, 1.0, 0.0], (n_points, 1))  # Green line
@@ -31,7 +31,7 @@ def create_demo_scene():
     # Create the base scene with shared elements
     base_scene = (
         PointCloud(
-            positions,
+            centers,
             colors,
             scales,
             onHover=Plot.js(
@@ -48,7 +48,7 @@ def create_demo_scene():
         +
         # # Add some line strips that weave through the scene
         LineBeams(
-            positions=np.array(
+            points=np.array(
                 [
                     # X axis
                     0.0,
@@ -89,7 +89,7 @@ def create_demo_scene():
                 ],
                 dtype=np.float32,
             ),
-            radius=0.02,
+            size=0.02,
             onHover=Plot.js("(i) => $state.update({hover_line: i})"),
             decorations=[
                 deco([0], alpha=0.5),
@@ -107,7 +107,7 @@ def create_demo_scene():
                     [-0.8, 0.0, 0.0],  # Second (semi-transparent)
                 ]
             ),
-            radii=np.array(
+            half_sizes=np.array(
                 [
                     [0.3, 0.15, 0.2],  # Elongated in x, compressed in y
                     [0.15, 0.3, 0.2],  # Elongated in y, compressed in x
@@ -130,7 +130,7 @@ def create_demo_scene():
                     [0.2, 0.0, 0.0],  # Second (semi-transparent)
                 ]
             ),
-            radii=np.array(
+            half_sizes=np.array(
                 [
                     [0.2, 0.3, 0.15],  # Non-uniform axes
                     [0.3, 0.15, 0.2],  # Different non-uniform axes
@@ -153,7 +153,7 @@ def create_demo_scene():
                     [1.2, 0.0, 0.0],  # Second (semi-transparent)
                 ]
             ),
-            sizes=np.array(
+            half_sizes=np.array(
                 [
                     [0.3, 0.4, 0.2],  # Non-uniform sizes
                     [0.4, 0.2, 0.3],  # Different non-uniform sizes

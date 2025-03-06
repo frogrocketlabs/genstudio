@@ -194,7 +194,7 @@ def scene(controlled, point_size, xyz, rgb, scale, select_region=False):
     )
     return (
         PointCloud(
-            positions=xyz,
+            centers=xyz,
             colors=rgb,
             scales=scale,
             alpha=Plot.js("$state.alpha ? 0.5 : null"),
@@ -346,7 +346,7 @@ scene(False, 0.1, torus_xyz, torus_rgb, np.ones(NUM_POINTS) * 0.1)
 
 (
     PointCloud(
-        positions=torus_xyz,
+        centers=torus_xyz,
         colors=torus_rgb,
         scales=np.ones(NUM_POINTS) * 0.005,
     )

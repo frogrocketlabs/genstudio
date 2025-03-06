@@ -507,19 +507,19 @@ function createVertexBufferLayout(
 
 // Common vertex buffer layouts
 export const POINT_CLOUD_GEOMETRY_LAYOUT = createVertexBufferLayout([
-  [0, 'float32x3'], // position
+  [0, 'float32x3'], // center
   [1, 'float32x3']  // normal
 ]);
 
 export const POINT_CLOUD_INSTANCE_LAYOUT = createVertexBufferLayout([
-  [2, 'float32x3'], // position
+  [2, 'float32x3'], // center
   [3, 'float32'],   // size
   [4, 'float32x3'], // color
   [5, 'float32']    // alpha
 ], 'instance');
 
 export const POINT_CLOUD_PICKING_INSTANCE_LAYOUT = createVertexBufferLayout([
-  [2, 'float32x3'], // position
+  [2, 'float32x3'], // center
   [3, 'float32'],   // size
   [4, 'float32']    // pickID
 ], 'instance');

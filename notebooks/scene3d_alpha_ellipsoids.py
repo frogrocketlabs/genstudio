@@ -60,7 +60,7 @@ def create_gaussian_ellipsoids_scene():
     centers = []
     colors = []
     alphas = []
-    radii = []
+    half_sizes = []
 
     for center in cluster_centers:
         positions = generate_cluster_positions(center, n_ellipsoids_per_cluster)
@@ -72,16 +72,17 @@ def create_gaussian_ellipsoids_scene():
         cluster_alphas, scales = calculate_distance_based_values(positions, center)
         alphas.extend(cluster_alphas)
 
-        base_radius = np.random.uniform(0.1, 0.2)
-        cluster_radii = np.array(
-            [[base_radius, base_radius, base_radius]] * n_ellipsoids_per_cluster
+        base_half_size = np.random.uniform(0.1, 0.2)
+        cluster_half_sizes = np.array(
+            [[base_half_size, base_half_size, base_half_size]]
+            * n_ellipsoids_per_cluster
         )
-        cluster_radii *= scales[:, np.newaxis]
-        radii.extend(cluster_radii)
+        cluster_half_sizes *= scales[:, np.newaxis]
+        half_sizes.extend(cluster_half_sizes)
 
     return Ellipsoid(
         centers=np.array(centers),
-        radii=np.array(radii),
+        half_sizes=np.array(half_sizes),
         colors=np.array(colors),
         alphas=np.array(alphas),
     ) | Plot.initialState(get_default_camera())
@@ -97,7 +98,7 @@ def create_gaussian_cuboids_scene():
     centers = []
     colors = []
     alphas = []
-    sizes = []
+    half_sizes = []
     rotations = []
 
     for center in cluster_centers:
@@ -114,13 +115,13 @@ def create_gaussian_cuboids_scene():
         )
         alphas.extend(cluster_alphas)
 
-        # Random base size for this cluster
-        base_size = np.random.uniform(0.15, 0.25)
-        cluster_sizes = np.array(
-            [[base_size, base_size, base_size]] * n_cuboids_per_cluster
+        # Random base half_size for this cluster
+        base_half_size = np.random.uniform(0.15, 0.25)
+        cluster_half_sizes = np.array(
+            [[base_half_size, base_half_size, base_half_size]] * n_cuboids_per_cluster
         )
-        cluster_sizes *= scales[:, np.newaxis]
-        sizes.extend(cluster_sizes)
+        cluster_half_sizes *= scales[:, np.newaxis]
+        half_sizes.extend(cluster_half_sizes)
 
         # Random rotations for each cuboid
         cluster_rotations = np.random.uniform(
@@ -130,7 +131,7 @@ def create_gaussian_cuboids_scene():
 
     return Cuboid(
         centers=np.array(centers),
-        sizes=np.array(sizes),
+        half_size=np.array(half_sizes),
         colors=np.array(colors),
         alphas=np.array(alphas),
         rotations=np.array(rotations),
@@ -165,13 +166,13 @@ def create_animated_clusters_scene(
     centers_frames = []
     colors_frames = []
     alphas_frames = []
-    radii_frames = []
+    half_sizes_frames = []
 
     for frame in range(n_frames):
         frame_centers = []
         frame_colors = []
         frame_alphas = []
-        frame_radii = []
+        frame_half_sizes = []
 
         # Generate new random positions/properties for each cluster
         for cluster_idx, center in enumerate(cluster_centers):
@@ -191,18 +192,19 @@ def create_animated_clusters_scene(
             )
             frame_alphas.extend(cluster_alphas)
 
-            base_radius = np.random.uniform(0.15, 0.25)
-            cluster_radii = np.array(
-                [[base_radius, base_radius, base_radius]] * n_ellipsoids_per_cluster
+            base_half_size = np.random.uniform(0.15, 0.25)
+            cluster_half_sizes = np.array(
+                [[base_half_size, base_half_size, base_half_size]]
+                * n_ellipsoids_per_cluster
             )
-            cluster_radii *= scales[:, np.newaxis]
-            frame_radii.extend(cluster_radii)
+            cluster_half_sizes *= scales[:, np.newaxis]
+            frame_half_sizes.extend(cluster_half_sizes)
 
         # Store arrays for this frame - reshape to match expected format and ensure float32
         centers_frames.append(np.array(frame_centers, dtype=np.float32).flatten())
         colors_frames.append(np.array(frame_colors, dtype=np.float32).flatten())
         alphas_frames.append(np.array(frame_alphas, dtype=np.float32).flatten())
-        radii_frames.append(np.array(frame_radii, dtype=np.float32).flatten())
+        half_sizes_frames.append(np.array(frame_half_sizes, dtype=np.float32).flatten())
 
     # Create the animated scene
     scene = (
@@ -210,7 +212,7 @@ def create_animated_clusters_scene(
             centers=js("$state.centers[$state.frame]"),
             colors=js("$state.colors[$state.frame]"),
             alphas=js("$state.alphas[$state.frame]"),
-            radii=js("$state.radii[$state.frame]"),
+            half_sizes=js("$state.half_sizes[$state.frame]"),
         )
         + {"controls": ["fps"]}
         | Plot.Slider("frame", 0, range=n_frames, fps="raf")
@@ -220,7 +222,7 @@ def create_animated_clusters_scene(
                 "centers": centers_frames,
                 "colors": colors_frames,
                 "alphas": alphas_frames,
-                "radii": radii_frames,
+                "half_sizes": half_sizes_frames,
                 "camera": get_default_camera(),
             }
         )
@@ -252,7 +254,7 @@ test_scene = Ellipsoid(
         ]
     ),
     alphas=np.array([0.9, 0.5, 0.2]),  # High to low alpha from back to front
-    radius=[0.5, 0.5, 0.5],  # Same size for all
+    half_size=[0.5, 0.5, 0.5],  # Same size for all
 ) + (
     {
         "defaultCamera": {

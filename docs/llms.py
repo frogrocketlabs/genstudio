@@ -947,8 +947,8 @@ x = r * np.cos(t)
 y = r * np.sin(t)
 z = t / 10
 
-# Stack into positions array
-positions = np.column_stack([x, y, z])
+# Stack into centers array
+centers = np.column_stack([x, y, z])
 
 # Create rainbow colors
 hue = t / t.max()
@@ -964,7 +964,7 @@ sizes = 0.01 + 0.02 * np.sin(t)
     Plot.initialState({"hover_point": None})
     | Scene(
         PointCloud(
-            positions,
+            centers,
             colors,
             sizes,
             onHover=Plot.js("(i) => $state.update({hover_point: i})"),
