@@ -3,16 +3,21 @@ export interface PipelineCacheEntry {
     device: GPUDevice;
   }
 
-export interface PrimitiveSpec<E> {
+export interface PrimitiveSpec<ConfigType extends BaseComponentConfig> {
     /**
      * The type/name of this primitive spec
      */
     type: string;
 
     /**
+     * Default values for the primitive's properties
+     */
+    defaults?: ElementConstants;
+
+    /**
      * Returns the number of instances in this component.
      */
-    getCount(component: E): number;
+    getCount(elem: ConfigType): number;
 
     /**
      * Returns the number of floats needed per instance for render data.
@@ -29,7 +34,7 @@ export interface PrimitiveSpec<E> {
      * Used for transparency sorting and distance calculations.
      * @returns Object containing centers array and stride, or undefined if not applicable
      */
-    getCenters(component: E): Float32Array;
+    getCenters(elem: ConfigType): Float32Array;
 
     /**
      * Offset for color data in the vertex buffer
@@ -49,7 +54,7 @@ export interface PrimitiveSpec<E> {
      * @param offset Offset in the output array to start writing
      * @param scale Scale factor to apply to the instance
      */
-    fillRenderGeometry(component: E, instanceIndex: number, out: Float32Array, offset: number, scale: number): void;
+    fillRenderGeometry(elem: ConfigType, i: number, out: Float32Array, offset: number): void;
 
     /**
      * Applies a scale decoration to an instance.
@@ -68,7 +73,7 @@ export interface PrimitiveSpec<E> {
      * @param baseID Base ID for picking
      * @param scale Scale factor to apply to the instance
      */
-    fillPickingGeometry(component: E, instanceIndex: number, out: Float32Array, offset: number, baseID: number, scale: number): void;
+    fillPickingGeometry(elem: ConfigType, i: number, out: Float32Array, offset: number, baseID: number): void;
 
     /**
      * Optional method to get the color index for an instance.
@@ -77,7 +82,7 @@ export interface PrimitiveSpec<E> {
      * @param instanceIndex Index of the instance to get color for
      * @returns The index to use for color lookup
      */
-    getColorIndexForInstance?(component: E, instanceIndex: number): number;
+    getColorIndexForInstance?(elem: ConfigType, i: number): number;
 
     /**
      * Optional method to apply decorations to an instance.
@@ -93,7 +98,10 @@ export interface PrimitiveSpec<E> {
      * Default WebGPU rendering configuration for this primitive type.
      * Specifies face culling and primitive topology.
      */
-    renderConfig: RenderConfig;
+    renderConfig: {
+      cullMode: GPUCullMode;
+      topology: GPUPrimitiveTopology;
+    };
 
     /**
      * Creates or retrieves a cached WebGPU render pipeline for this primitive.
@@ -123,16 +131,7 @@ export interface PrimitiveSpec<E> {
      * Creates the base geometry buffers needed for this primitive type.
      * These buffers are shared across all instances of the primitive.
      */
-    createGeometryResource(device: GPUDevice): { vb: GPUBuffer; ib: GPUBuffer; indexCount: number; vertexCount: number };
-  }
-
-
-/** Configuration for how a primitive type should be rendered */
-interface RenderConfig {
-    /** How faces should be culled */
-    cullMode: GPUCullMode;
-    /** How vertices should be interpreted */
-    topology: GPUPrimitiveTopology;
+    createGeometryResource(device: GPUDevice): GeometryResource;
   }
 
 export interface Decoration {
@@ -142,7 +141,18 @@ export interface Decoration {
     scale?: number;
   }
 
+
+export interface ElementConstants {
+  half_size?: number[] | Float32Array | number;
+  quaternion?: number[] | Float32Array;
+  size?: number;
+  color?: [number, number, number] | Float32Array;
+  alpha?: number;
+  scale?: number;
+}
+
 export interface BaseComponentConfig {
+    constants?: ElementConstants;
     /**
      * Per-instance RGB color values as a Float32Array of RGB triplets.
      * Each instance requires 3 consecutive values in the range [0,1].

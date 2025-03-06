@@ -350,9 +350,7 @@ def EllipsoidAxes(
 def Cuboid(
     centers: ArrayLike,
     half_sizes: Optional[ArrayLike] = None,
-    half_size: Optional[
-        Union[ArrayLike, NumberLike]
-    ] = None,  # Default half_size [w,h,d] for all cuboids
+    half_size: Optional[Union[ArrayLike, NumberLike]] = None,
     quaternions: Optional[ArrayLike] = None,  # Nx4 array of quaternions [x,y,z,w]
     quaternion: Optional[ArrayLike] = None,  # Default orientation quaternion [x,y,z,w]
     colors: Optional[ArrayLike] = None,

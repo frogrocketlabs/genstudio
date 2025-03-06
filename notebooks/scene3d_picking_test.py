@@ -71,11 +71,8 @@ scene_ellipsoids = (
     + Ellipsoid(
         centers=np.array([[-1, 0, 0], [-1, 1, 0], [-1, 0.5, 1]]),
         colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
-        half_size=[0.4, 0.4, 0.4],
+        half_size=0.4,
         alpha=0.5,
-        quaternions=np.array(
-            [[0.707, 0, 0.707, 0], [0.5, 0.5, 0.5, 0.5], [1, 0, 0, 0]]
-        ),
         onHover=js(
             "(i) => $state.update({hover_ellipsoid_2: typeof i === 'number' ? [i] : []})"
         ),
@@ -93,7 +90,8 @@ scene_ellipsoids = (
         centers=np.array(
             [[1, 0, 0], [1, 1, 0], [1, 0.5, 1]]
         ),  # Offset by 1 in x direction
-        half_size=[0.4, 0.4, 0.4],
+        color=[0, 1, 0],
+        half_sizes=[0.4, 0.4, 0.4],
         alpha=0.8,
         quaternions=np.array(
             [[0.866, 0, 0.5, 0], [0.707, 0.707, 0, 0], [0.5, 0.5, 0.5, 0.5]]
@@ -158,6 +156,7 @@ scene_cuboids = Cuboid(
         }
     }
 )
+scene_cuboids
 
 # 4) Line Beams Picking
 print("Test 4: Line Beams Picking.\nHover over line segments.")
@@ -215,7 +214,7 @@ mixed_scene = (
     Ellipsoid(
         centers=np.array([[2, -2, 0.5]]),
         colors=np.array([[1, 0, 0]]),
-        half_size=[0.5, 0.5, 0.5],
+        half_sizes=[0.5, 0.5, 0.5],
         quaternions=np.array([[0.707, 0, 0.707, 0]]),
         onHover=js(
             "(i) => $state.update({hover_mixed_ellipsoid: typeof i === 'number' ? [i] : []})"
@@ -283,7 +282,7 @@ colors[:, 2] = (centers[:, 2] - centers[:, 2].min()) / (
 scene_grid_cuboids = Cuboid(
     centers=centers,
     colors=colors,
-    half_size=0.15,
+    half_sizes=[0.15],
     alpha=0.85,
     onHover=js(
         "(i) => $state.update({hover_grid_cuboid: typeof i === 'number' ? [i] : []})"
