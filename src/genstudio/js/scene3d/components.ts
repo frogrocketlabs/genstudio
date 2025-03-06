@@ -95,6 +95,13 @@ function getIndicesAndMapping(
   };
 }
 
+
+function acopy(source: ArrayLike<number>, sourceI: number, out: ArrayLike<number> & { [n: number]: number }, outI: number, n: number) {
+  for (let i = 0; i < n; i++) {
+    out[outI + i] = source[sourceI + i];
+  }
+}
+
 /** ===================== MINI-FRAMEWORK FOR RENDER/PICK DATA ===================== **/
 
 function applyDefaultDecoration(
@@ -150,16 +157,12 @@ export function buildRenderData<ConfigType extends BaseComponentConfig>(
     const colorIndex = spec.getColorIndexForInstance
       ? spec.getColorIndexForInstance(elem, i)
       : i;
-    const constantColor = constants.color
-    const r = constantColor ? constantColor[0] : elem.colors![colorIndex * 3 + 0];
-    const g = constantColor ? constantColor[1] : elem.colors![colorIndex * 3 + 1];
-    const b = constantColor ? constantColor[2] : elem.colors![colorIndex * 3 + 2];
-    const a = constants.alpha || elem.alphas![colorIndex];
-
-    out[offset + spec.colorOffset] = r;
-    out[offset + spec.colorOffset + 1] = g;
-    out[offset + spec.colorOffset + 2] = b;
-    out[offset + spec.alphaOffset] = a;
+    if (constants.color) {
+      acopy(constants.color, 0, out, offset + spec.colorOffset, 3);
+    } else {
+      acopy(elem.colors!, colorIndex * 3, out, offset + spec.colorOffset, 3);
+    }
+    out[offset + spec.alphaOffset] = constants.alpha || elem.alphas![colorIndex];
   }
 
   applyDecorations(elem.decorations, count, (idx, dec) => {
@@ -380,7 +383,7 @@ const computeConstants = (spec: any, elem: any) => {
     }
     // Case 2: Target value is an array, and the specified plural is of that length, so use it as a constant value.
     if (targetTypeIsArray && pluralValue.length === defaultValue.length) {
-      constants[key as keyof ElementConstants] = singularValue || defaultValue;
+      constants[key as keyof ElementConstants] = pluralValue || defaultValue;
       continue;
     }
 
@@ -390,7 +393,7 @@ const computeConstants = (spec: any, elem: any) => {
       const filledArray = new Array((defaultValue as number[]).length).fill(
         pluralValue[0]
       );
-      constants[key as keyof ElementConstants] = singularValue || filledArray;
+      constants[key as keyof ElementConstants] = filledArray;
     }
   }
 
@@ -447,22 +450,16 @@ export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
     const constants = getElementConstants(this, elem);
 
     // Position
-    out[offset + 0] = elem.centers[i * 3 + 0];
-    out[offset + 1] = elem.centers[i * 3 + 1];
-    out[offset + 2] = elem.centers[i * 3 + 2];
+    acopy(elem.centers, i * 3, out, offset, 3);
 
     // Size - use constant or per-instance value
     out[offset + 3] = constants.size || elem.sizes![i];
 
     // Color - use constant or per-instance value
     if (constants.color) {
-      out[offset + 4] = constants.color[0];
-      out[offset + 5] = constants.color[1];
-      out[offset + 6] = constants.color[2];
+      acopy(constants.color, 0, out, offset + 4, 3);
     } else {
-      out[offset + 4] = elem.colors![i * 3 + 0];
-      out[offset + 5] = elem.colors![i * 3 + 1];
-      out[offset + 6] = elem.colors![i * 3 + 2];
+      acopy(elem.colors!, i * 3, out, offset + 4, 3);
     }
 
     // Alpha - use constant or per-instance value
@@ -615,18 +612,20 @@ export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
     const constants = getElementConstants(this, elem);
 
     // Position
-    out[offset + 0] = elem.centers[i * 3 + 0];
-    out[offset + 1] = elem.centers[i * 3 + 1];
-    out[offset + 2] = elem.centers[i * 3 + 2];
+    acopy(elem.centers, i * 3, out, offset, 3)
 
-    out[offset + 3] = constants.half_size ? constants.half_size[0] : elem.half_sizes![i * 3 + 0];
-    out[offset + 4] = constants.half_size ? constants.half_size[1] : elem.half_sizes![i * 3 + 1];
-    out[offset + 5] = constants.half_size ? constants.half_size[2] : elem.half_sizes![i * 3 + 2];
 
-    out[offset + 6] = constants.quaternion ? constants.quaternion[0] : elem.quaternions![i * 4 + 0];
-    out[offset + 7] = constants.quaternion ? constants.quaternion[1] : elem.quaternions![i * 4 + 1];
-    out[offset + 8] = constants.quaternion ? constants.quaternion[2] : elem.quaternions![i * 4 + 2];
-    out[offset + 9] = constants.quaternion ? constants.quaternion[3] : elem.quaternions![i * 4 + 3];
+    if (constants.half_size) {
+      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3)
+    } else {
+      acopy(elem.half_sizes as ArrayLike<number>, i * 3, out, offset + 3, 3)
+    }
+
+    if (constants.quaternion) {
+      acopy(constants.quaternion, 0, out, offset + 6, 4)
+    } else {
+      acopy(elem.quaternions!, i * 4, out, offset + 6, 4)
+    }
   },
 
   applyDecorationScale(out, offset, scaleFactor) {
@@ -640,32 +639,21 @@ export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
     const constants = getElementConstants(this, elem);
 
     // Position
-    out[offset + 0] = elem.centers[i * 3 + 0];
-    out[offset + 1] = elem.centers[i * 3 + 1];
-    out[offset + 2] = elem.centers[i * 3 + 2];
+    acopy(elem.centers, i * 3, out, offset, 3);
 
-    out[offset + 3] = constants.half_size
-      ? constants.half_size[0]
-      : elem.half_sizes![i * 3 + 0];
-    out[offset + 4] = constants.half_size
-      ? constants.half_size[1]
-      : elem.half_sizes![i * 3 + 1];
-    out[offset + 5] = constants.half_size
-      ? constants.half_size[2]
-      : elem.half_sizes![i * 3 + 2];
+    // Half sizes
+    if (constants.half_size) {
+      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3);
+    } else {
+      acopy(elem.half_sizes as ArrayLike<number>, i * 3, out, offset + 3, 3);
+    }
 
-    out[offset + 6] = constants.quaternion
-      ? constants.quaternion[0]
-      : elem.quaternions![i * 4 + 0];
-    out[offset + 7] = constants.quaternion
-      ? constants.quaternion[1]
-      : elem.quaternions![i * 4 + 1];
-    out[offset + 8] = constants.quaternion
-      ? constants.quaternion[2]
-      : elem.quaternions![i * 4 + 2];
-    out[offset + 9] = constants.quaternion
-      ? constants.quaternion[3]
-      : elem.quaternions![i * 4 + 3];
+    // Quaternion
+    if (constants.quaternion) {
+      acopy(constants.quaternion, 0, out, offset + 6, 4);
+    } else {
+      acopy(elem.quaternions!, i * 4, out, offset + 6, 4);
+    }
 
     // picking ID
     out[offset + 10] = packID(baseID + i);
@@ -775,36 +763,22 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
   fillRenderGeometry(elem, ringIndex, out, offset) {
     const i = Math.floor(ringIndex / 3);
     const constants = getElementConstants(this, elem);
-
     // Position
-    out[offset + 0] = elem.centers[i * 3 + 0];
-    out[offset + 1] = elem.centers[i * 3 + 1];
-    out[offset + 2] = elem.centers[i * 3 + 2];
+    acopy(elem.centers, i * 3, out, offset, 3);
 
     // Half sizes
-    out[offset + 3] = constants.half_size
-      ? constants.half_size[0]
-      : elem.half_sizes![i * 3 + 0];
-    out[offset + 4] = constants.half_size
-      ? constants.half_size[1]
-      : elem.half_sizes![i * 3 + 1];
-    out[offset + 5] = constants.half_size
-      ? constants.half_size[2]
-      : elem.half_sizes![i * 3 + 2];
+    if (constants.half_size) {
+      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3);
+    } else {
+      acopy(elem.half_sizes!, i * 3, out, offset + 3, 3);
+    }
 
     // Quaternions
-    out[offset + 6] = constants.quaternion
-      ? constants.quaternion[0]
-      : elem.quaternions![i * 4 + 0];
-    out[offset + 7] = constants.quaternion
-      ? constants.quaternion[1]
-      : elem.quaternions![i * 4 + 1];
-    out[offset + 8] = constants.quaternion
-      ? constants.quaternion[2]
-      : elem.quaternions![i * 4 + 2];
-    out[offset + 9] = constants.quaternion
-      ? constants.quaternion[3]
-      : elem.quaternions![i * 4 + 3];
+    if (constants.quaternion) {
+      acopy(constants.quaternion, 0, out, offset + 6, 4);
+    } else {
+      acopy(elem.quaternions!, i * 4, out, offset + 6, 4);
+    }
   },
 
   applyDecorationScale(out, offset, scaleFactor) {
@@ -816,36 +790,22 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
   fillPickingGeometry(elem, ringIndex, out, offset, baseID) {
     const i = Math.floor(ringIndex / 3);
     const constants = getElementConstants(this, elem);
-
     // Position
-    out[offset + 0] = elem.centers[i * 3 + 0];
-    out[offset + 1] = elem.centers[i * 3 + 1];
-    out[offset + 2] = elem.centers[i * 3 + 2];
+    acopy(elem.centers, i * 3, out, offset, 3);
 
     // Half sizes
-    out[offset + 3] = constants.half_size
-      ? constants.half_size[0]
-      : elem.half_sizes![i * 3 + 0];
-    out[offset + 4] = constants.half_size
-      ? constants.half_size[1]
-      : elem.half_sizes![i * 3 + 1];
-    out[offset + 5] = constants.half_size
-      ? constants.half_size[2]
-      : elem.half_sizes![i * 3 + 2];
+    if (constants.half_size) {
+      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3);
+    } else {
+      acopy(elem.half_sizes!, i * 3, out, offset + 3, 3);
+    }
 
     // Quaternions
-    out[offset + 6] = constants.quaternion
-      ? constants.quaternion[0]
-      : elem.quaternions![i * 4 + 0];
-    out[offset + 7] = constants.quaternion
-      ? constants.quaternion[1]
-      : elem.quaternions![i * 4 + 1];
-    out[offset + 8] = constants.quaternion
-      ? constants.quaternion[2]
-      : elem.quaternions![i * 4 + 2];
-    out[offset + 9] = constants.quaternion
-      ? constants.quaternion[3]
-      : elem.quaternions![i * 4 + 3];
+    if (constants.quaternion) {
+      acopy(constants.quaternion, 0, out, offset + 6, 4);
+    } else {
+      acopy(elem.quaternions!, i * 4, out, offset + 6, 4);
+    }
 
     // Use the ellipsoid index for picking, not the ring index
     out[offset + 10] = packID(baseID + i);
@@ -933,7 +893,7 @@ export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
   type: "Cuboid",
 
   defaults: {
-    half_size: [1, 1, 1],
+    half_size: [0.1, 0.1, 0.1],
     quaternion: [0, 0, 0, 1],
   },
 
@@ -962,32 +922,31 @@ export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
     const constants = getElementConstants(this, elem);
 
     // Position
-    out[offset + 0] = elem.centers[i * 3 + 0];
-    out[offset + 1] = elem.centers[i * 3 + 1];
-    out[offset + 2] = elem.centers[i * 3 + 2];
+    acopy(elem.centers, i * 3, out, offset, 3);
 
-    out[offset + 3] = constants.half_size
-      ? constants.half_size[0]
-      : elem.half_sizes![i * 3 + 0];
-    out[offset + 4] = constants.half_size
-      ? constants.half_size[1]
-      : elem.half_sizes![i * 3 + 1];
-    out[offset + 5] = constants.half_size
-      ? constants.half_size[2]
-      : elem.half_sizes![i * 3 + 2];
+    // Half sizes
+    if (constants.half_size) {
+      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3);
+    } else {
+      acopy(elem.half_sizes as ArrayLike<number>, i * 3, out, offset + 3, 3);
+    }
 
-    out[offset + 6] = constants.quaternion
-      ? constants.quaternion[0]
-      : elem.quaternions![i * 4 + 0];
-    out[offset + 7] = constants.quaternion
-      ? constants.quaternion[1]
-      : elem.quaternions![i * 4 + 1];
-    out[offset + 8] = constants.quaternion
-      ? constants.quaternion[2]
-      : elem.quaternions![i * 4 + 2];
-    out[offset + 9] = constants.quaternion
-      ? constants.quaternion[3]
-      : elem.quaternions![i * 4 + 3];
+    // Quaternion
+    if (constants.quaternion) {
+      acopy(constants.quaternion, 0, out, offset + 6, 4);
+    } else {
+      acopy(elem.quaternions!, i * 4, out, offset + 6, 4);
+    }
+
+    // Color - use constant or per-instance value
+    if (constants.color) {
+      acopy(constants.color, 0, out, offset + 10, 3);
+    } else {
+      acopy(elem.colors!, i * 3, out, offset + 10, 3);
+    }
+
+    // Alpha - use constant or per-instance value
+    out[offset + 13] = constants.alpha || elem.alphas![i];
   },
 
   applyDecorationScale(out, offset, scaleFactor) {
@@ -1001,32 +960,21 @@ export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
     const constants = getElementConstants(this, elem);
 
     // Position
-    out[offset + 0] = elem.centers[i * 3 + 0];
-    out[offset + 1] = elem.centers[i * 3 + 1];
-    out[offset + 2] = elem.centers[i * 3 + 2];
+    acopy(elem.centers, i * 3, out, offset, 3);
 
-    out[offset + 3] = constants.half_size
-      ? constants.half_size[0]
-      : elem.half_sizes![i * 3 + 0];
-    out[offset + 4] = constants.half_size
-      ? constants.half_size[1]
-      : elem.half_sizes![i * 3 + 1];
-    out[offset + 5] = constants.half_size
-      ? constants.half_size[2]
-      : elem.half_sizes![i * 3 + 2];
+    // Half sizes
+    if (constants.half_size) {
+      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3);
+    } else {
+      acopy(elem.half_sizes as ArrayLike<number>, i * 3, out, offset + 3, 3);
+    }
 
-    out[offset + 6] = constants.quaternion
-      ? constants.quaternion[0]
-      : elem.quaternions![i * 4 + 0];
-    out[offset + 7] = constants.quaternion
-      ? constants.quaternion[1]
-      : elem.quaternions![i * 4 + 1];
-    out[offset + 8] = constants.quaternion
-      ? constants.quaternion[2]
-      : elem.quaternions![i * 4 + 2];
-    out[offset + 9] = constants.quaternion
-      ? constants.quaternion[3]
-      : elem.quaternions![i * 4 + 3];
+    // Quaternion
+    if (constants.quaternion) {
+      acopy(constants.quaternion, 0, out, offset + 6, 4);
+    } else {
+      acopy(elem.quaternions!, i * 4, out, offset + 6, 4);
+    }
 
     // picking ID
     out[offset + 10] = packID(baseID + i);
@@ -1194,14 +1142,10 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
     const constants = getElementConstants(this, elem);
 
     // Start
-    out[offset + 0] = elem.points[p * 4 + 0];
-    out[offset + 1] = elem.points[p * 4 + 1];
-    out[offset + 2] = elem.points[p * 4 + 2];
+    acopy(elem.points, p * 4, out, offset, 3);
 
     // End
-    out[offset + 3] = elem.points[(p + 1) * 4 + 0];
-    out[offset + 4] = elem.points[(p + 1) * 4 + 1];
-    out[offset + 5] = elem.points[(p + 1) * 4 + 2];
+    acopy(elem.points, (p + 1) * 4, out, offset + 3, 3);
 
     // Size
     const lineIndex = Math.floor(elem.points[p * 4 + 3]);
@@ -1219,14 +1163,10 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
     const constants = getElementConstants(this, elem);
 
     // Start
-    out[offset + 0] = elem.points[p * 4 + 0];
-    out[offset + 1] = elem.points[p * 4 + 1];
-    out[offset + 2] = elem.points[p * 4 + 2];
+    acopy(elem.points, p * 4, out, offset, 3);
 
     // End
-    out[offset + 3] = elem.points[(p + 1) * 4 + 0];
-    out[offset + 4] = elem.points[(p + 1) * 4 + 1];
-    out[offset + 5] = elem.points[(p + 1) * 4 + 2];
+    acopy(elem.points, (p + 1) * 4, out, offset + 3, 3);
 
     // Size
     const lineIndex = Math.floor(elem.points[p * 4 + 3]);

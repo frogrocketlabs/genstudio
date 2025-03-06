@@ -99,7 +99,7 @@ def create_gaussian_cuboids_scene():
     colors = []
     alphas = []
     half_sizes = []
-    rotations = []
+    quaternions = []
 
     for center in cluster_centers:
         positions = generate_cluster_positions(
@@ -123,18 +123,22 @@ def create_gaussian_cuboids_scene():
         cluster_half_sizes *= scales[:, np.newaxis]
         half_sizes.extend(cluster_half_sizes)
 
-        # Random rotations for each cuboid
-        cluster_rotations = np.random.uniform(
-            0, 2 * np.pi, size=(n_cuboids_per_cluster, 3)
-        )
-        rotations.extend(cluster_rotations)
+        # Generate random quaternions for each cuboid
+        # Format: [x,y,z,w] where w is cos(theta/2) and x,y,z is the normalized axis * sin(theta/2)
+        angles = np.random.uniform(0, 2 * np.pi, size=n_cuboids_per_cluster)
+        axes = np.random.normal(0, 1, size=(n_cuboids_per_cluster, 3))
+        axes = axes / np.linalg.norm(axes, axis=1)[:, np.newaxis]  # Normalize axes
 
+        cluster_quaternions = np.zeros((n_cuboids_per_cluster, 4))
+        cluster_quaternions[:, :3] = axes * np.sin(angles / 2)[:, np.newaxis]
+        cluster_quaternions[:, 3] = np.cos(angles / 2)  # w component
+        quaternions.extend(cluster_quaternions)
     return Cuboid(
         centers=np.array(centers),
-        half_size=np.array(half_sizes),
+        half_sizes=np.array(half_sizes),
         colors=np.array(colors),
         alphas=np.array(alphas),
-        rotations=np.array(rotations),
+        quaternions=np.array(quaternions),
     ) | Plot.initialState(get_default_camera())
 
 
@@ -144,9 +148,10 @@ cuboid_scene = create_gaussian_cuboids_scene()
 
 # Display ellipsoid scene
 ellipsoid_scene
-
+# %%
 # Display cuboid scene
 cuboid_scene
+# %%
 
 
 def create_animated_clusters_scene(
