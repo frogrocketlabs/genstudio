@@ -72,7 +72,7 @@ def create_gaussian_ellipsoids_scene():
         cluster_alphas, scales = calculate_distance_based_values(positions, center)
         alphas.extend(cluster_alphas)
 
-        base_half_size = np.random.uniform(0.1, 0.2)
+        base_half_size = np.random.uniform(0.05, 0.1)
         cluster_half_sizes = np.array(
             [[base_half_size, base_half_size, base_half_size]]
             * n_ellipsoids_per_cluster
@@ -116,7 +116,7 @@ def create_gaussian_cuboids_scene():
         alphas.extend(cluster_alphas)
 
         # Random base half_size for this cluster
-        base_half_size = np.random.uniform(0.15, 0.25)
+        base_half_size = np.random.uniform(0.08, 0.16)
         cluster_half_sizes = np.array(
             [[base_half_size, base_half_size, base_half_size]] * n_cuboids_per_cluster
         )
@@ -192,7 +192,7 @@ def create_animated_clusters_scene(
             )
             frame_alphas.extend(cluster_alphas)
 
-            base_half_size = np.random.uniform(0.15, 0.25)
+            base_half_size = np.random.uniform(0.08, 0.16)
             cluster_half_sizes = np.array(
                 [[base_half_size, base_half_size, base_half_size]]
                 * n_ellipsoids_per_cluster

@@ -49,7 +49,7 @@ scene_ellipsoids = (
     Ellipsoid(
         centers=np.array([[0, 0, 0], [0, 1, 0], [0, 0.5, 1]]),
         colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
-        radius=[0.4, 0.4, 0.4],
+        half_size=[0.4, 0.4, 0.4],
         alpha=0.7,
         onHover=js(
             "(i) => $state.update({hover_ellipsoid: typeof i === 'number' ? [i] : []})"
@@ -65,7 +65,7 @@ scene_ellipsoids = (
     + Ellipsoid(
         centers=np.array([[-1, 0, 0], [-1, 1, 0], [-1, 0.5, 1]]),
         colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
-        radius=[0.4, 0.4, 0.4],
+        half_size=[0.4, 0.4, 0.4],
         alpha=0.5,
         onHover=js(
             "(i) => $state.update({hover_ellipsoid_2: typeof i === 'number' ? [i] : []})"
@@ -82,7 +82,7 @@ scene_ellipsoids = (
         centers=np.array(
             [[1, 0, 0], [1, 1, 0], [1, 0.5, 1]]
         ),  # Offset by 1 in x direction
-        radius=[0.4, 0.4, 0.4],
+        half_size=[0.4, 0.4, 0.4],
         alpha=0.8,
         onHover=js(
             "(i) => $state.update({hover_axes: typeof i === 'number' ? [i] : []})"
@@ -118,7 +118,7 @@ scene_cuboids = Cuboid(
     centers=np.array([[2, 0, 0], [2, 0, 1], [2, 0, 2]]),
     colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
     alphas=np.array([0.5, 0.7, 0.9]),
-    half_size=0.8,
+    half_size=0.4,
     onHover=js(
         "(i) => $state.update({hover_cuboid: typeof i === 'number' ? [i] : []})"
     ),
@@ -194,7 +194,7 @@ mixed_scene = (
     Ellipsoid(
         centers=np.array([[2, -2, 0.5]]),
         colors=np.array([[1, 0, 0]]),
-        radius=[0.5, 0.5, 0.5],
+        half_size=[0.5, 0.5, 0.5],
         onHover=js(
             "(i) => $state.update({hover_mixed_ellipsoid: typeof i === 'number' ? [i] : []})"
         ),
@@ -258,7 +258,7 @@ colors[:, 2] = (centers[:, 2] - centers[:, 2].min()) / (
 scene_grid_cuboids = Cuboid(
     centers=centers,
     colors=colors,
-    half_size=0.3,
+    half_size=0.15,
     alpha=0.85,
     onHover=js(
         "(i) => $state.update({hover_grid_cuboid: typeof i === 'number' ? [i] : []})"

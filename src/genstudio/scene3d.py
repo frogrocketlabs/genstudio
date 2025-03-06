@@ -247,6 +247,8 @@ def Ellipsoid(
     centers: ArrayLike,
     half_sizes: Optional[ArrayLike] = None,
     half_size: Optional[Union[NumberLike, ArrayLike]] = None,  # Single value or [x,y,z]
+    quaternions: Optional[ArrayLike] = None,  # Nx4 array of quaternions [x,y,z,w]
+    quaternion: Optional[ArrayLike] = None,  # Default orientation quaternion [x,y,z,w]
     colors: Optional[ArrayLike] = None,
     color: Optional[ArrayLike] = None,  # Default RGB color for all ellipsoids
     alphas: Optional[ArrayLike] = None,
@@ -259,6 +261,8 @@ def Ellipsoid(
         centers: Nx3 array of ellipsoid centers or flattened array
         half_sizes: Nx3 array of half_sizes (x,y,z) or flattened array (optional)
         half_size: Default half_size (sphere) or [x,y,z] half_sizes (ellipsoid) if half_sizes not provided
+        quaternions: Nx4 array of orientation quaternions [x,y,z,w] (optional)
+        quaternion: Default orientation quaternion [x,y,z,w] if quaternions not provided
         colors: Nx3 array of RGB colors or flattened array (optional)
         color: Default RGB color [r,g,b] for all ellipsoids if colors not provided
         alphas: Array of alpha values per ellipsoid (optional)
@@ -272,6 +276,11 @@ def Ellipsoid(
         data["half_sizes"] = flatten_array(half_sizes, dtype=np.float32)
     elif half_size is not None:
         data["half_size"] = half_size
+
+    if quaternions is not None:
+        data["quaternions"] = flatten_array(quaternions, dtype=np.float32)
+    elif quaternion is not None:
+        data["quaternion"] = quaternion
 
     if colors is not None:
         data["colors"] = flatten_array(colors, dtype=np.float32)
@@ -290,6 +299,8 @@ def EllipsoidAxes(
     centers: ArrayLike,
     half_sizes: Optional[ArrayLike] = None,
     half_size: Optional[Union[NumberLike, ArrayLike]] = None,  # Single value or [x,y,z]
+    quaternions: Optional[ArrayLike] = None,  # Nx4 array of quaternions [x,y,z,w]
+    quaternion: Optional[ArrayLike] = None,  # Default orientation quaternion [x,y,z,w]
     colors: Optional[ArrayLike] = None,
     color: Optional[ArrayLike] = None,  # Default RGB color for all ellipsoids
     alphas: Optional[ArrayLike] = None,  # Per-ellipsoid alpha values
@@ -302,6 +313,8 @@ def EllipsoidAxes(
         centers: Nx3 array of ellipsoid centers or flattened array
         half_sizes: Nx3 array of half_sizes (x,y,z) or flattened array (optional)
         half_size: Default half_size (sphere) or [x,y,z] half_sizes (ellipsoid) if half_sizes not provided
+        quaternions: Nx4 array of orientation quaternions [x,y,z,w] (optional)
+        quaternion: Default orientation quaternion [x,y,z,w] if quaternions not provided
         colors: Nx3 array of RGB colors or flattened array (optional)
         color: Default RGB color [r,g,b] for all ellipsoids if colors not provided
         alphas: Array of alpha values per ellipsoid (optional)
@@ -315,6 +328,11 @@ def EllipsoidAxes(
         data["half_sizes"] = flatten_array(half_sizes, dtype=np.float32)
     elif half_size is not None:
         data["half_size"] = half_size
+
+    if quaternions is not None:
+        data["quaternions"] = flatten_array(quaternions, dtype=np.float32)
+    elif quaternion is not None:
+        data["quaternion"] = quaternion
 
     if colors is not None:
         data["colors"] = flatten_array(colors, dtype=np.float32)
@@ -335,6 +353,8 @@ def Cuboid(
     half_size: Optional[
         Union[ArrayLike, NumberLike]
     ] = None,  # Default half_size [w,h,d] for all cuboids
+    quaternions: Optional[ArrayLike] = None,  # Nx4 array of quaternions [x,y,z,w]
+    quaternion: Optional[ArrayLike] = None,  # Default orientation quaternion [x,y,z,w]
     colors: Optional[ArrayLike] = None,
     color: Optional[ArrayLike] = None,  # Default RGB color for all cuboids
     alphas: Optional[ArrayLike] = None,  # Per-cuboid alpha values
@@ -347,6 +367,8 @@ def Cuboid(
         centers: Nx3 array of cuboid centers or flattened array
         half_sizes: Nx3 array of half sizes (width,height,depth) or flattened array (optional)
         half_size: Default half size [w,h,d] for all cuboids if half_sizes not provided
+        quaternions: Nx4 array of orientation quaternions [x,y,z,w] (optional)
+        quaternion: Default orientation quaternion [x,y,z,w] if quaternions not provided
         colors: Nx3 array of RGB colors or flattened array (optional)
         color: Default RGB color [r,g,b] for all cuboids if colors not provided
         alphas: Array of alpha values per cuboid (optional)
@@ -360,6 +382,11 @@ def Cuboid(
         data["half_sizes"] = flatten_array(half_sizes, dtype=np.float32)
     elif half_size is not None:
         data["half_size"] = half_size
+
+    if quaternions is not None:
+        data["quaternions"] = flatten_array(quaternions, dtype=np.float32)
+    elif quaternion is not None:
+        data["quaternion"] = quaternion
 
     if colors is not None:
         data["colors"] = flatten_array(colors, dtype=np.float32)

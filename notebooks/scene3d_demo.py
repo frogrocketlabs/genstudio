@@ -30,6 +30,21 @@ def create_demo_scene():
     # Create varying scales for points
     sizes = 0.01 + 0.02 * np.sin(t)
 
+    # Create quaternion rotations for ellipsoids
+    def axis_angle_to_quat(axis, angle):
+        axis = axis / np.linalg.norm(axis)
+        s = math.sin(angle / 2)
+        return np.array([math.cos(angle / 2), axis[0] * s, axis[1] * s, axis[2] * s])
+
+    # Different rotation quaternions for each ellipsoid
+    ellipsoid_quats = np.array(
+        [
+            axis_angle_to_quat([1, 1, 0], math.pi / 4),  # 45 degrees around [1,1,0]
+            axis_angle_to_quat([0, 1, 1], math.pi / 3),  # 60 degrees around [0,1,1]
+            axis_angle_to_quat([1, 0, 1], math.pi / 6),  # 30 degrees around [1,0,1]
+        ]
+    )
+
     # Create the base scene with shared elements
     base_scene = (
         PointCloud(
@@ -48,27 +63,40 @@ def create_demo_scene():
             ],
         )
         +
-        # Ellipsoids with one highlighted
+        # Ellipsoids with one highlighted and rotations
         Ellipsoid(
             centers=np.array([[0.5, 0.5, 0.5], [-0.5, -0.5, 0.5], [0.0, 0.0, 0.0]]),
             half_sizes=np.array([[0.1, 0.2, 0.1], [0.2, 0.1, 0.1], [0.15, 0.15, 0.15]]),
             colors=np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
+            quaternions=ellipsoid_quats,
             decorations=[deco([1], color=[1, 1, 0], alpha=0.8)],
         )
         +
-        # Ellipsoid bounds with transparency
+        # Ellipsoid bounds with transparency and rotations
         EllipsoidAxes(
             centers=np.array([[0.8, 0.0, 0.0], [-0.8, 0.0, 0.0]]),
             half_sizes=np.array([[0.2, 0.1, 0.1], [0.1, 0.2, 0.1]]),
             colors=np.array([[1.0, 0.5, 0.0], [0.0, 0.5, 1.0]]),
+            quaternions=np.array(
+                [
+                    axis_angle_to_quat([1, 0, 0], math.pi / 3),
+                    axis_angle_to_quat([0, 1, 0], math.pi / 4),
+                ]
+            ),
             decorations=[deco([0, 1], alpha=0.5)],
         )
         +
         # Cuboids with one enlarged
         Cuboid(
             centers=np.array([[0.0, -0.8, 0.0], [0.0, -0.8, 0.3]]),
-            sizes=np.array([[0.3, 0.1, 0.2], [0.2, 0.1, 0.2]]),
+            half_sizes=np.array([[0.15, 0.05, 0.1], [0.1, 0.05, 0.1]]),
             colors=np.array([[0.8, 0.2, 0.8], [0.2, 0.8, 0.8]]),
+            quaternions=np.array(
+                [
+                    axis_angle_to_quat([0, 0, 1], math.pi / 6),
+                    axis_angle_to_quat([1, 1, 1], math.pi / 4),
+                ]
+            ),
             decorations=[deco([0], scale=1.2)],
         )
     )

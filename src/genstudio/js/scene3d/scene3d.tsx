@@ -87,7 +87,7 @@ export function Ellipsoid(props: EllipsoidComponentConfig): EllipsoidComponentCo
     props.half_size;
 
   return {
-    ...coerceFloat32Fields(props, ['centers', 'half_sizes', 'colors', 'alphas']),
+    ...coerceFloat32Fields(props, ['centers', 'half_sizes', 'quaternions', 'colors', 'alphas']),
     half_size,
     type: 'Ellipsoid'
   };
@@ -104,7 +104,7 @@ export function EllipsoidAxes(props: EllipsoidAxesComponentConfig): EllipsoidAxe
     props.half_size;
 
   return {
-    ...coerceFloat32Fields(props, ['centers', 'half_sizes', 'colors', 'alphas']),
+    ...coerceFloat32Fields(props, ['centers', 'half_sizes', 'quaternions', 'colors', 'alphas']),
     half_size,
     type: 'EllipsoidAxes'
   };
@@ -121,7 +121,7 @@ export function Cuboid(props: CuboidComponentConfig): CuboidComponentConfig {
     props.half_size;
 
   return {
-    ...coerceFloat32Fields(props, ['centers', 'half_sizes', 'colors', 'alphas']),
+    ...coerceFloat32Fields(props, ['centers', 'half_sizes', 'quaternions', 'colors', 'alphas']),
     half_size,
     type: 'Cuboid'
   };

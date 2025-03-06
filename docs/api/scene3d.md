@@ -62,6 +62,10 @@ Parameters
 
 - `half_size` (Optional[Union[NumberLike, ArrayLike]]): Default half_size (sphere) or [x,y,z] half_sizes (ellipsoid) if half_sizes not provided
 
+- `quaternions` (Optional[ArrayLike]): Nx4 array of orientation quaternions [x,y,z,w] (optional)
+
+- `quaternion` (Optional[ArrayLike]): Default orientation quaternion [x,y,z,w] if quaternions not provided
+
 - `colors` (Optional[ArrayLike]): Nx3 array of RGB colors or flattened array (optional)
 
 - `color` (Optional[ArrayLike]): Default RGB color [r,g,b] for all ellipsoids if colors not provided
@@ -88,6 +92,10 @@ Parameters
 
 - `half_size` (Optional[Union[NumberLike, ArrayLike]]): Default half_size (sphere) or [x,y,z] half_sizes (ellipsoid) if half_sizes not provided
 
+- `quaternions` (Optional[ArrayLike]): Nx4 array of orientation quaternions [x,y,z,w] (optional)
+
+- `quaternion` (Optional[ArrayLike]): Default orientation quaternion [x,y,z,w] if quaternions not provided
+
 - `colors` (Optional[ArrayLike]): Nx3 array of RGB colors or flattened array (optional)
 
 - `color` (Optional[ArrayLike]): Default RGB color [r,g,b] for all ellipsoids if colors not provided
@@ -113,6 +121,10 @@ Parameters
 - `half_sizes` (Optional[ArrayLike]): Nx3 array of half sizes (width,height,depth) or flattened array (optional)
 
 - `half_size` (Optional[Union[ArrayLike, NumberLike]]): Default half size [w,h,d] for all cuboids if half_sizes not provided
+
+- `quaternions` (Optional[ArrayLike]): Nx4 array of orientation quaternions [x,y,z,w] (optional)
+
+- `quaternion` (Optional[ArrayLike]): Default orientation quaternion [x,y,z,w] if quaternions not provided
 
 - `colors` (Optional[ArrayLike]): Nx3 array of RGB colors or flattened array (optional)
 

@@ -2,6 +2,8 @@
  * 2) Constants and Camera Functions
  ******************************************************/
 
+import { VertexBufferLayout } from './types';
+
 /**
  * Global lighting configuration for the 3D scene.
  * Uses a simple Blinn-Phong lighting model with ambient, diffuse, and specular components.
@@ -154,9 +156,12 @@ fn fs_main(
   return vec4<f32>(color, alpha);
 }`;
 
+import { quaternionShaderFunctions } from './quaternion';
+
 export const ellipsoidVertCode = /*wgsl*/`
 ${cameraStruct}
 ${standardVSOut}
+${quaternionShaderFunctions}
 
 @vertex
 fn vs_main(
@@ -164,24 +169,36 @@ fn vs_main(
   @location(1) normal: vec3<f32>,
   @location(2) position: vec3<f32>,
   @location(3) size: vec3<f32>,
-  @location(4) color: vec3<f32>,
-  @location(5) alpha: f32
+  @location(4) quaternion: vec4<f32>,
+  @location(5) color: vec3<f32>,
+  @location(6) alpha: f32
 )-> VSOut {
-  let worldPos = position + (localPos * size);
-  let scaledNorm = normalize(normal / size);
+  // Scale local position
+  let scaledLocal = localPos * size;
+
+  // Apply rotation using quaternion
+  let rotatedPos = quat_rotate(quaternion, scaledLocal);
+
+  // Apply translation
+  let worldPos = position + rotatedPos;
+
+  // Transform normal - first normalize by size, then rotate by quaternion
+  let invScaledNorm = normalize(normal / size);
+  let rotatedNorm = quat_rotate(quaternion, invScaledNorm);
 
   var out: VSOut;
   out.position = camera.mvp * vec4<f32>(worldPos, 1.0);
   out.color = color;
   out.alpha = alpha;
   out.worldPos = worldPos;
-  out.normal = scaledNorm;
+  out.normal = rotatedNorm;
   return out;
 }`;
 
 export const ellipsoidPickingVertCode = /*wgsl*/`
 ${cameraStruct}
 ${pickingVSOut}
+${quaternionShaderFunctions}
 
 @vertex
 fn vs_main(
@@ -189,9 +206,18 @@ fn vs_main(
   @location(1) normal: vec3<f32>,
   @location(2) position: vec3<f32>,
   @location(3) size: vec3<f32>,
-  @location(4) pickID: f32
+  @location(4) quaternion: vec4<f32>,
+  @location(5) pickID: f32
 )-> VSOut {
-  let worldPos = position + (localPos * size);
+  // Scale local position
+  let scaledLocal = localPos * size;
+
+  // Apply rotation using quaternion
+  let rotatedPos = quat_rotate(quaternion, scaledLocal);
+
+  // Apply translation
+  let worldPos = position + rotatedPos;
+
   var out: VSOut;
   out.position = camera.mvp * vec4<f32>(worldPos, 1.0);
   out.pickID = pickID;
@@ -217,6 +243,7 @@ fn fs_main(
 export const ringVertCode = /*wgsl*/`
 ${cameraStruct}
 ${standardVSOut}
+${quaternionShaderFunctions}
 
 @vertex
 fn vs_main(
@@ -225,12 +252,14 @@ fn vs_main(
   @location(1) normal: vec3<f32>,
   @location(2) position: vec3<f32>,
   @location(3) size: vec3<f32>,
-  @location(4) color: vec3<f32>,
-  @location(5) alpha: f32
+  @location(4) quaternion: vec4<f32>,
+  @location(5) color: vec3<f32>,
+  @location(6) alpha: f32
 )-> VSOut {
   let ringIndex = i32(instID % 3u);
   var lp = localPos;
-  // rotate the ring geometry differently for x-y-z rings
+
+  // Rotate the ring geometry differently for x-y-z rings
   if(ringIndex == 0) {
     let tmp = lp.z;
     lp.z = -lp.y;
@@ -243,15 +272,25 @@ fn vs_main(
     lp.z = lp.x;
     lp.x = pz;
   }
+
+  // Scale the local position
   lp *= size;
-  let worldPos = position + lp;
+
+  // Apply quaternion rotation
+  let rotatedPos = quat_rotate(quaternion, lp);
+
+  // Apply translation
+  let worldPos = position + rotatedPos;
+
+  // Also rotate the normal
+  let rotatedNorm = quat_rotate(quaternion, normal);
 
   var out: VSOut;
   out.position = camera.mvp * vec4<f32>(worldPos, 1.0);
   out.color = color;
   out.alpha = alpha;
   out.worldPos = worldPos;
-  out.normal = normal;
+  out.normal = rotatedNorm;
   return out;
 }`;
 
@@ -270,6 +309,7 @@ fn fs_main(
 export const cuboidVertCode = /*wgsl*/`
 ${cameraStruct}
 ${standardVSOut}
+${quaternionShaderFunctions}
 
 @vertex
 fn vs_main(
@@ -277,24 +317,36 @@ fn vs_main(
   @location(1) normal: vec3<f32>,
   @location(2) position: vec3<f32>,
   @location(3) size: vec3<f32>,
-  @location(4) color: vec3<f32>,
-  @location(5) alpha: f32
+  @location(4) quaternion: vec4<f32>,
+  @location(5) color: vec3<f32>,
+  @location(6) alpha: f32
 )-> VSOut {
-  let worldPos = position + (localPos * size);
-  let scaledNorm = normalize(normal / size);
+  // Scale local position
+  let scaledLocal = localPos * size;
+
+  // Apply rotation using quaternion
+  let rotatedPos = quat_rotate(quaternion, scaledLocal);
+
+  // Apply translation
+  let worldPos = position + rotatedPos;
+
+  // Transform normal - first normalize by size, then rotate by quaternion
+  let invScaledNorm = normalize(normal);
+  let rotatedNorm = quat_rotate(quaternion, invScaledNorm);
 
   var out: VSOut;
   out.position = camera.mvp * vec4<f32>(worldPos, 1.0);
   out.color = color;
   out.alpha = alpha;
   out.worldPos = worldPos;
-  out.normal = scaledNorm;
+  out.normal = rotatedNorm;
   return out;
 }`;
 
 export const cuboidPickingVertCode = /*wgsl*/`
 ${cameraStruct}
 ${pickingVSOut}
+${quaternionShaderFunctions}
 
 @vertex
 fn vs_main(
@@ -302,9 +354,18 @@ fn vs_main(
   @location(1) normal: vec3<f32>,
   @location(2) position: vec3<f32>,
   @location(3) size: vec3<f32>,
-  @location(4) pickID: f32
+  @location(4) quaternion: vec4<f32>,
+  @location(5) pickID: f32
 )-> VSOut {
-  let worldPos = position + (localPos * size);
+  // Scale local position
+  let scaledLocal = localPos * size;
+
+  // Apply rotation using quaternion
+  let rotatedPos = quat_rotate(quaternion, scaledLocal);
+
+  // Apply translation
+  let worldPos = position + rotatedPos;
+
   var out: VSOut;
   out.position = camera.mvp * vec4<f32>(worldPos, 1.0);
   out.pickID = pickID;
@@ -447,6 +508,7 @@ fn fs_pick(@location(0) pickID: f32)-> @location(0) vec4<f32> {
 export const ringPickingVertCode = /*wgsl*/`
 ${cameraStruct}
 ${pickingVSOut}
+${quaternionShaderFunctions}
 
 @vertex
 fn vs_main(
@@ -455,10 +517,13 @@ fn vs_main(
   @location(1) normal: vec3<f32>,
   @location(2) position: vec3<f32>,
   @location(3) size: vec3<f32>,
-  @location(4) pickID: f32
+  @location(4) quaternion: vec4<f32>,
+  @location(5) pickID: f32
 )-> VSOut {
   let ringIndex = i32(instID % 3u);
   var lp = localPos;
+
+  // Rotate the ring geometry differently for x-y-z rings
   if(ringIndex == 0) {
     let tmp = lp.z;
     lp.z = -lp.y;
@@ -471,8 +536,16 @@ fn vs_main(
     lp.z = lp.x;
     lp.x = pz;
   }
+
+  // Scale the local position
   lp *= size;
-  let worldPos = position + lp;
+
+  // Apply quaternion rotation
+  let rotatedPos = quat_rotate(quaternion, lp);
+
+  // Apply translation
+  let worldPos = position + rotatedPos;
+
   var out: VSOut;
   out.position = camera.mvp * vec4<f32>(worldPos, 1.0);
   out.pickID = pickID;
@@ -494,7 +567,7 @@ function createVertexBufferLayout(
       format
     };
     // Add to offset based on format size
-    offset += format.includes('x3') ? 12 : format.includes('x2') ? 8 : 4;
+    offset += format.includes('x4') ? 16 : format.includes('x3') ? 12 : format.includes('x2') ? 8 : 4;
     return attr;
   });
 
@@ -532,14 +605,16 @@ export const MESH_GEOMETRY_LAYOUT = createVertexBufferLayout([
 export const ELLIPSOID_INSTANCE_LAYOUT = createVertexBufferLayout([
   [2, 'float32x3'], // position
   [3, 'float32x3'], // size
-  [4, 'float32x3'], // color
-  [5, 'float32']    // alpha
+  [4, 'float32x4'], // quaternion (quaternion)
+  [5, 'float32x3'], // color
+  [6, 'float32']    // alpha
 ], 'instance');
 
 export const ELLIPSOID_PICKING_INSTANCE_LAYOUT = createVertexBufferLayout([
   [2, 'float32x3'], // position
   [3, 'float32x3'], // size
-  [4, 'float32']    // pickID
+  [4, 'float32x4'], // quaternion (quaternion)
+  [5, 'float32']    // pickID
 ], 'instance');
 
 export const LINE_BEAM_INSTANCE_LAYOUT = createVertexBufferLayout([
@@ -560,25 +635,29 @@ export const LINE_BEAM_PICKING_INSTANCE_LAYOUT = createVertexBufferLayout([
 export const CUBOID_INSTANCE_LAYOUT = createVertexBufferLayout([
   [2, 'float32x3'], // position
   [3, 'float32x3'], // size
-  [4, 'float32x3'], // color
-  [5, 'float32']    // alpha
+  [4, 'float32x4'], // quaternion (quaternion)
+  [5, 'float32x3'], // color
+  [6, 'float32']    // alpha
 ], 'instance');
 
 export const CUBOID_PICKING_INSTANCE_LAYOUT = createVertexBufferLayout([
   [2, 'float32x3'], // position
   [3, 'float32x3'], // size
-  [4, 'float32']    // pickID
+  [4, 'float32x4'], // quaternion (quaternion)
+  [5, 'float32']    // pickID
 ], 'instance');
 
 export const RING_INSTANCE_LAYOUT = createVertexBufferLayout([
   [2, 'float32x3'], // position
   [3, 'float32x3'], // size
-  [4, 'float32x3'], // color
-  [5, 'float32']    // alpha
+  [4, 'float32x4'], // quaternion (quaternion)
+  [5, 'float32x3'], // color
+  [6, 'float32']    // alpha
 ], 'instance');
 
 export const RING_PICKING_INSTANCE_LAYOUT = createVertexBufferLayout([
   [2, 'float32x3'], // position
   [3, 'float32x3'], // size
-  [4, 'float32']    // pickID
+  [4, 'float32x4'], // quaternion (quaternion)
+  [5, 'float32']    // pickID
 ], 'instance');
