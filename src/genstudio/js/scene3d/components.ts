@@ -375,6 +375,7 @@ const computeConstants = (spec: any, elem: any) => {
     if (!pluralValue) {
       if (targetTypeIsArray && typeof singularValue === 'number') {
         // Fill array with the single number value
+        // @ts-ignore
         constants[key as keyof ElementConstants] = new Array(defaultValue.length).fill(singularValue);
       } else {
         constants[key as keyof ElementConstants] = singularValue || defaultValue;
@@ -393,6 +394,7 @@ const computeConstants = (spec: any, elem: any) => {
       const filledArray = new Array((defaultValue as number[]).length).fill(
         pluralValue[0]
       );
+      // @ts-ignore
       constants[key as keyof ElementConstants] = filledArray;
     }
   }
@@ -574,8 +576,11 @@ export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
 export interface EllipsoidComponentConfig extends BaseComponentConfig {
   type: "Ellipsoid";
   centers: Float32Array;
-  half_sizes?: Float32Array; // Either length 3 (shared) or 3*N (per-instance)
-  quaternions?: Float32Array; // Either length 4 (shared) or 4*N (per-instance)
+  // Support both forms since computeConstants handles both
+  half_sizes?: Float32Array;
+  half_size?: number | [number, number, number];
+  quaternions?: Float32Array;
+  quaternion?: [number, number, number, number];
 }
 
 export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
@@ -723,8 +728,10 @@ export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
 export interface EllipsoidAxesComponentConfig extends BaseComponentConfig {
   type: "EllipsoidAxes";
   centers: Float32Array;
-  half_sizes?: Float32Array; // Either length 3 (shared) or 3*N (per-instance)
-  quaternions?: Float32Array; // Either length 4 (shared) or 4*N (per-instance)
+  half_sizes?: Float32Array;
+  half_size?: number | [number, number, number];
+  quaternions?: Float32Array;
+  quaternion?: [number, number, number, number];
 }
 
 export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
@@ -885,8 +892,10 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
 export interface CuboidComponentConfig extends BaseComponentConfig {
   type: "Cuboid";
   centers: Float32Array;
-  half_sizes?: Float32Array; // Either length 1, 3 (shared) or 3*N (per-instance)
-  quaternions?: Float32Array; // Either length 4 (shared) or 4*N (per-instance)
+  half_sizes?: Float32Array;
+  half_size?: number | [number, number, number];
+  quaternions?: Float32Array;
+  quaternion?: [number, number, number, number];
 }
 
 export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {

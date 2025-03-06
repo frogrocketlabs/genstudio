@@ -184,12 +184,6 @@ export interface BaseComponentConfig {
     alpha?: number;
 
     /**
-     * Default scale multiplier for all instances without specific scale.
-     * Defaults to 1.0.
-     */
-    scale?: number;
-
-    /**
      * Callback fired when the mouse hovers over an instance.
      * The index parameter is the instance index, or null when hover ends.
      */
