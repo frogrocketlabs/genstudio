@@ -1,7 +1,3 @@
-/******************************************************
- * 2) Constants and Camera Functions
- ******************************************************/
-
 import { VertexBufferLayout } from './types';
 
 /**
@@ -256,6 +252,8 @@ fn vs_main(
   @location(5) color: vec3<f32>,
   @location(6) alpha: f32
 )-> VSOut {
+  // Get the base instance index (divide by 3 since we have 3 rings per instance)
+  let baseInstance = instID / 3u;
   let ringIndex = i32(instID % 3u);
   var lp = localPos;
 
@@ -331,7 +329,7 @@ fn vs_main(
   let worldPos = position + rotatedPos;
 
   // Transform normal - first normalize by size, then rotate by quaternion
-  let invScaledNorm = normalize(normal);
+  let invScaledNorm = normalize(normal / size);
   let rotatedNorm = quat_rotate(quaternion, invScaledNorm);
 
   var out: VSOut;
@@ -552,8 +550,6 @@ fn vs_main(
   return out;
 }`;
 
-
-
 // Helper function to create vertex buffer layouts
 function createVertexBufferLayout(
   attributes: Array<[number, GPUVertexFormat]>,
@@ -650,14 +646,14 @@ export const CUBOID_PICKING_INSTANCE_LAYOUT = createVertexBufferLayout([
 export const RING_INSTANCE_LAYOUT = createVertexBufferLayout([
   [2, 'float32x3'], // position
   [3, 'float32x3'], // size
-  [4, 'float32x4'], // quaternion (quaternion)
-  [5, 'float32x3'], // color
-  [6, 'float32']    // alpha
+  [4, 'float32x4'], // quaternion
+  [5, 'float32x3'], // color (now shared across rings)
+  [6, 'float32']    // alpha (now shared across rings)
 ], 'instance');
 
 export const RING_PICKING_INSTANCE_LAYOUT = createVertexBufferLayout([
   [2, 'float32x3'], // position
   [3, 'float32x3'], // size
-  [4, 'float32x4'], // quaternion (quaternion)
-  [5, 'float32']    // pickID
+  [4, 'float32x4'], // quaternion
+  [5, 'float32']    // pickID (now shared across rings)
 ], 'instance');

@@ -32,24 +32,62 @@ export interface PrimitiveSpec<E> {
     getCenters(component: E): Float32Array;
 
     /**
-     * Builds vertex buffer data for rendering.
-     * Populates the provided Float32Array with interleaved vertex attributes.
-     * Returns true if data was populated, false if component has no renderable data.
-     * @param component The component to build render data for
-     * @param target The Float32Array to populate with render data
-     * @param sortedIndices Optional array of indices for depth sorting
+     * Offset for color data in the vertex buffer
      */
-    buildRenderData(component: E, target: Float32Array, sortedIndices?: Uint32Array): boolean;
+    colorOffset: number;
 
     /**
-     * Builds vertex buffer data for GPU-based picking.
-     * Populates the provided Float32Array with picking data.
-     * @param component The component to build picking data for
-     * @param target The Float32Array to populate with picking data
-     * @param baseID Starting ID for this component's instances
-     * @param sortedIndices Optional array of indices for depth sorting
+     * Offset for alpha data in the vertex buffer
      */
-    buildPickingData(component: E, target: Float32Array, baseID: number, sortedIndices?: Uint32Array): void;
+    alphaOffset: number;
+
+    /**
+     * Fills geometry data for rendering a single instance.
+     * @param component The component containing instance data
+     * @param instanceIndex Index of the instance to fill data for
+     * @param out Output Float32Array to write data to
+     * @param offset Offset in the output array to start writing
+     * @param scale Scale factor to apply to the instance
+     */
+    fillRenderGeometry(component: E, instanceIndex: number, out: Float32Array, offset: number, scale: number): void;
+
+    /**
+     * Applies a scale decoration to an instance.
+     * @param out Output Float32Array containing instance data
+     * @param offset Offset in the output array where instance data starts
+     * @param scaleFactor Scale factor to apply
+     */
+    applyDecorationScale(out: Float32Array, offset: number, scaleFactor: number): void;
+
+    /**
+     * Fills geometry data for picking a single instance.
+     * @param component The component containing instance data
+     * @param instanceIndex Index of the instance to fill data for
+     * @param out Output Float32Array to write data to
+     * @param offset Offset in the output array to start writing
+     * @param baseID Base ID for picking
+     * @param scale Scale factor to apply to the instance
+     */
+    fillPickingGeometry(component: E, instanceIndex: number, out: Float32Array, offset: number, baseID: number, scale: number): void;
+
+    /**
+     * Optional method to get the color index for an instance.
+     * Used when the color index is different from the instance index.
+     * @param component The component containing instance data
+     * @param instanceIndex Index of the instance to get color for
+     * @returns The index to use for color lookup
+     */
+    getColorIndexForInstance?(component: E, instanceIndex: number): number;
+
+    /**
+     * Optional method to apply decorations to an instance.
+     * Used when decoration needs special handling beyond default color/alpha/scale.
+     * @param out Output Float32Array containing instance data
+     * @param instanceIndex Index of the instance being decorated
+     * @param dec The decoration to apply
+     * @param floatsPerInstance Number of floats per instance in the buffer
+     */
+    applyDecoration?(out: Float32Array, instanceIndex: number, dec: Decoration, floatsPerInstance: number): void;
 
     /**
      * Default WebGPU rendering configuration for this primitive type.

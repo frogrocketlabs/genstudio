@@ -126,11 +126,11 @@ export function createBeamGeometry() {
   const vertexData = new Float32Array(cube.vertexData);
 
   // Transform vertices:
-  // Move z from [-0.5,0.5] to [0,1] by adding 0.5
-  // This preserves the x,y centering while making z go from 0 to 1
+  // Scale z by 0.5 and translate by 0.5 to make beam start at origin
+  // and extend one unit in +z direction
   for(let i = 0; i < vertexData.length; i += 6) {
     // Only transform position z coordinate (first 3 components), not normals
-    vertexData[i + 2] = vertexData[i + 2] + 0.5;
+    vertexData[i + 2] = vertexData[i + 2] * 0.5 + 0.5;
   }
 
   return {

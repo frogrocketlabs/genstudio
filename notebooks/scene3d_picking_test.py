@@ -29,6 +29,7 @@ scene_points = PointCloud(
             scale=1.5,
         ),
         deco([0], scale=4),
+        deco(None, scale=[1.2, 0.8, 1.0]),
     ],
 ) + (
     {
@@ -51,6 +52,9 @@ scene_ellipsoids = (
         colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
         half_size=[0.4, 0.4, 0.4],
         alpha=0.7,
+        quaternions=np.array(
+            [[1, 0, 0, 0], [0, 0.707, 0, 0.707], [0.5, 0, 0.5, 0.707]]
+        ),
         onHover=js(
             "(i) => $state.update({hover_ellipsoid: typeof i === 'number' ? [i] : []})"
         ),
@@ -60,6 +64,8 @@ scene_ellipsoids = (
                 color=[1, 1, 0],
                 scale=1.2,
             ),
+            deco([0], scale=1.5),
+            deco([1], scale=0.5),
         ],
     )
     + Ellipsoid(
@@ -67,6 +73,9 @@ scene_ellipsoids = (
         colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
         half_size=[0.4, 0.4, 0.4],
         alpha=0.5,
+        quaternions=np.array(
+            [[0.707, 0, 0.707, 0], [0.5, 0.5, 0.5, 0.5], [1, 0, 0, 0]]
+        ),
         onHover=js(
             "(i) => $state.update({hover_ellipsoid_2: typeof i === 'number' ? [i] : []})"
         ),
@@ -76,6 +85,8 @@ scene_ellipsoids = (
                 color=[1, 1, 0],
                 scale=1.2,
             ),
+            deco([0], scale=1.5),
+            deco([1], scale=0.5),
         ],
     )
     + EllipsoidAxes(
@@ -84,6 +95,9 @@ scene_ellipsoids = (
         ),  # Offset by 1 in x direction
         half_size=[0.4, 0.4, 0.4],
         alpha=0.8,
+        quaternions=np.array(
+            [[0.866, 0, 0.5, 0], [0.707, 0.707, 0, 0], [0.5, 0.5, 0.5, 0.5]]
+        ),
         onHover=js(
             "(i) => $state.update({hover_axes: typeof i === 'number' ? [i] : []})"
         ),
@@ -92,6 +106,8 @@ scene_ellipsoids = (
                 js("$state.hover_axes"),
                 color=[1, 1, 0],
             ),
+            deco([0], scale=1.5),
+            deco([1], scale=0.5),
         ],
     )
     + (
@@ -119,6 +135,7 @@ scene_cuboids = Cuboid(
     colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
     alphas=np.array([0.5, 0.7, 0.9]),
     half_size=0.4,
+    quaternions=np.array([[1, 0, 0, 0], [0.707, 0, 0.707, 0], [0.5, 0.5, 0.5, 0.5]]),
     onHover=js(
         "(i) => $state.update({hover_cuboid: typeof i === 'number' ? [i] : []})"
     ),
@@ -129,6 +146,8 @@ scene_cuboids = Cuboid(
             alpha=1.0,
             scale=1.1,
         ),
+        deco([0], scale=1.5),
+        deco([1], scale=0.5),
     ],
 ) + (
     {
@@ -168,12 +187,14 @@ scene_beams = LineBeams(
     colors=np.array([[1, 0, 0], [0, 1, 0]]),
     size=0.1,
     alpha=0.7,
+    quaternions=np.array([[1, 0, 0, 0], [0.707, 0, 0.707, 0]]),
     onHover=js("(i) => $state.update({hover_beam: typeof i === 'number' ? [i] : []})"),
     decorations=[
         deco(
             js("$state.hover_beam"),
             color=[1, 1, 0],
         ),
+        deco(None, scale=[1.2, 0.8, 1.0]),
     ],
 ) + (
     {
@@ -195,6 +216,7 @@ mixed_scene = (
         centers=np.array([[2, -2, 0.5]]),
         colors=np.array([[1, 0, 0]]),
         half_size=[0.5, 0.5, 0.5],
+        quaternions=np.array([[0.707, 0, 0.707, 0]]),
         onHover=js(
             "(i) => $state.update({hover_mixed_ellipsoid: typeof i === 'number' ? [i] : []})"
         ),
@@ -203,12 +225,14 @@ mixed_scene = (
                 js("$state.hover_mixed_ellipsoid"),
                 color=[1, 1, 0],
             ),
+            deco(None, scale=[1.5, 0.7, 1.0]),
         ],
     )
     + PointCloud(
         centers=np.array([[2, -2, 0], [2, -2, 1]]),
         colors=np.array([[0, 1, 0], [0, 0, 1]]),
         size=0.2,
+        quaternions=np.array([[1, 0, 0, 0], [0.707, 0.707, 0, 0]]),
         onHover=js(
             "(i) => $state.update({hover_mixed_point: typeof i === 'number' ? [i] : []})"
         ),
@@ -217,6 +241,7 @@ mixed_scene = (
                 js("$state.hover_mixed_point"),
                 color=[1, 1, 0],
             ),
+            deco(None, scale=[0.8, 1.2, 1.0]),
         ],
     )
     + (
