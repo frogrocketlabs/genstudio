@@ -201,7 +201,7 @@ def flatten_array(arr: Any, dtype: Any = np.float32) -> Any:
 
 
 def PointCloud(
-    positions: ArrayLike,
+    centers: ArrayLike,
     colors: Optional[ArrayLike] = None,
     color: Optional[ArrayLike] = None,  # Default RGB color for all points
     sizes: Optional[ArrayLike] = None,
@@ -213,7 +213,7 @@ def PointCloud(
     """Create a point cloud element.
 
     Args:
-        positions: Nx3 array of point positions or flattened array
+        centers: Nx3 array of point centers or flattened array
         colors: Nx3 array of RGB colors or flattened array (optional)
         color: Default RGB color [r,g,b] for all points if colors not provided
         sizes: N array of point sizes or flattened array (optional)
@@ -222,8 +222,8 @@ def PointCloud(
         alpha: Default alpha value for all points if alphas not provided
         **kwargs: Additional arguments like decorations, onHover, onClick
     """
-    positions = flatten_array(positions, dtype=np.float32)
-    data: Dict[str, Any] = {"positions": positions}
+    centers = flatten_array(centers, dtype=np.float32)
+    data: Dict[str, Any] = {"centers": centers}
 
     if colors is not None:
         data["colors"] = flatten_array(colors, dtype=np.float32)
@@ -245,8 +245,10 @@ def PointCloud(
 
 def Ellipsoid(
     centers: ArrayLike,
-    radii: Optional[ArrayLike] = None,
-    radius: Optional[Union[NumberLike, ArrayLike]] = None,  # Single value or [x,y,z]
+    half_sizes: Optional[ArrayLike] = None,
+    half_size: Optional[Union[NumberLike, ArrayLike]] = None,  # Single value or [x,y,z]
+    quaternions: Optional[ArrayLike] = None,  # Nx4 array of quaternions [x,y,z,w]
+    quaternion: Optional[ArrayLike] = None,  # Default orientation quaternion [x,y,z,w]
     colors: Optional[ArrayLike] = None,
     color: Optional[ArrayLike] = None,  # Default RGB color for all ellipsoids
     alphas: Optional[ArrayLike] = None,
@@ -257,8 +259,10 @@ def Ellipsoid(
 
     Args:
         centers: Nx3 array of ellipsoid centers or flattened array
-        radii: Nx3 array of radii (x,y,z) or flattened array (optional)
-        radius: Default radius (sphere) or [x,y,z] radii (ellipsoid) if radii not provided
+        half_sizes: Nx3 array of half_sizes (x,y,z) or flattened array (optional)
+        half_size: Default half_size (sphere) or [x,y,z] half_sizes (ellipsoid) if half_sizes not provided
+        quaternions: Nx4 array of orientation quaternions [x,y,z,w] (optional)
+        quaternion: Default orientation quaternion [x,y,z,w] if quaternions not provided
         colors: Nx3 array of RGB colors or flattened array (optional)
         color: Default RGB color [r,g,b] for all ellipsoids if colors not provided
         alphas: Array of alpha values per ellipsoid (optional)
@@ -268,10 +272,15 @@ def Ellipsoid(
     centers = flatten_array(centers, dtype=np.float32)
     data: Dict[str, Any] = {"centers": centers}
 
-    if radii is not None:
-        data["radii"] = flatten_array(radii, dtype=np.float32)
-    elif radius is not None:
-        data["radius"] = radius
+    if half_sizes is not None:
+        data["half_sizes"] = flatten_array(half_sizes, dtype=np.float32)
+    elif half_size is not None:
+        data["half_size"] = half_size
+
+    if quaternions is not None:
+        data["quaternions"] = flatten_array(quaternions, dtype=np.float32)
+    elif quaternion is not None:
+        data["quaternion"] = quaternion
 
     if colors is not None:
         data["colors"] = flatten_array(colors, dtype=np.float32)
@@ -288,8 +297,10 @@ def Ellipsoid(
 
 def EllipsoidAxes(
     centers: ArrayLike,
-    radii: Optional[ArrayLike] = None,
-    radius: Optional[Union[NumberLike, ArrayLike]] = None,  # Single value or [x,y,z]
+    half_sizes: Optional[ArrayLike] = None,
+    half_size: Optional[Union[NumberLike, ArrayLike]] = None,  # Single value or [x,y,z]
+    quaternions: Optional[ArrayLike] = None,  # Nx4 array of quaternions [x,y,z,w]
+    quaternion: Optional[ArrayLike] = None,  # Default orientation quaternion [x,y,z,w]
     colors: Optional[ArrayLike] = None,
     color: Optional[ArrayLike] = None,  # Default RGB color for all ellipsoids
     alphas: Optional[ArrayLike] = None,  # Per-ellipsoid alpha values
@@ -300,8 +311,10 @@ def EllipsoidAxes(
 
     Args:
         centers: Nx3 array of ellipsoid centers or flattened array
-        radii: Nx3 array of radii (x,y,z) or flattened array (optional)
-        radius: Default radius (sphere) or [x,y,z] radii (ellipsoid) if radii not provided
+        half_sizes: Nx3 array of half_sizes (x,y,z) or flattened array (optional)
+        half_size: Default half_size (sphere) or [x,y,z] half_sizes (ellipsoid) if half_sizes not provided
+        quaternions: Nx4 array of orientation quaternions [x,y,z,w] (optional)
+        quaternion: Default orientation quaternion [x,y,z,w] if quaternions not provided
         colors: Nx3 array of RGB colors or flattened array (optional)
         color: Default RGB color [r,g,b] for all ellipsoids if colors not provided
         alphas: Array of alpha values per ellipsoid (optional)
@@ -311,10 +324,15 @@ def EllipsoidAxes(
     centers = flatten_array(centers, dtype=np.float32)
     data: Dict[str, Any] = {"centers": centers}
 
-    if radii is not None:
-        data["radii"] = flatten_array(radii, dtype=np.float32)
-    elif radius is not None:
-        data["radius"] = radius
+    if half_sizes is not None:
+        data["half_sizes"] = flatten_array(half_sizes, dtype=np.float32)
+    elif half_size is not None:
+        data["half_size"] = half_size
+
+    if quaternions is not None:
+        data["quaternions"] = flatten_array(quaternions, dtype=np.float32)
+    elif quaternion is not None:
+        data["quaternion"] = quaternion
 
     if colors is not None:
         data["colors"] = flatten_array(colors, dtype=np.float32)
@@ -331,10 +349,10 @@ def EllipsoidAxes(
 
 def Cuboid(
     centers: ArrayLike,
-    sizes: Optional[ArrayLike] = None,
-    size: Optional[
-        Union[ArrayLike, NumberLike]
-    ] = None,  # Default size [w,h,d] for all cuboids
+    half_sizes: Optional[ArrayLike] = None,
+    half_size: Optional[Union[ArrayLike, NumberLike]] = None,
+    quaternions: Optional[ArrayLike] = None,  # Nx4 array of quaternions [x,y,z,w]
+    quaternion: Optional[ArrayLike] = None,  # Default orientation quaternion [x,y,z,w]
     colors: Optional[ArrayLike] = None,
     color: Optional[ArrayLike] = None,  # Default RGB color for all cuboids
     alphas: Optional[ArrayLike] = None,  # Per-cuboid alpha values
@@ -345,8 +363,10 @@ def Cuboid(
 
     Args:
         centers: Nx3 array of cuboid centers or flattened array
-        sizes: Nx3 array of sizes (width,height,depth) or flattened array (optional)
-        size: Default size [w,h,d] for all cuboids if sizes not provided
+        half_sizes: Nx3 array of half sizes (width,height,depth) or flattened array (optional)
+        half_size: Default half size [w,h,d] for all cuboids if half_sizes not provided
+        quaternions: Nx4 array of orientation quaternions [x,y,z,w] (optional)
+        quaternion: Default orientation quaternion [x,y,z,w] if quaternions not provided
         colors: Nx3 array of RGB colors or flattened array (optional)
         color: Default RGB color [r,g,b] for all cuboids if colors not provided
         alphas: Array of alpha values per cuboid (optional)
@@ -356,10 +376,15 @@ def Cuboid(
     centers = flatten_array(centers, dtype=np.float32)
     data: Dict[str, Any] = {"centers": centers}
 
-    if sizes is not None:
-        data["sizes"] = flatten_array(sizes, dtype=np.float32)
-    elif size is not None:
-        data["size"] = size
+    if half_sizes is not None:
+        data["half_sizes"] = flatten_array(half_sizes, dtype=np.float32)
+    elif half_size is not None:
+        data["half_size"] = half_size
+
+    if quaternions is not None:
+        data["quaternions"] = flatten_array(quaternions, dtype=np.float32)
+    elif quaternion is not None:
+        data["quaternion"] = quaternion
 
     if colors is not None:
         data["colors"] = flatten_array(colors, dtype=np.float32)
@@ -375,7 +400,7 @@ def Cuboid(
 
 
 def LineBeams(
-    positions: ArrayLike,  # Array of quadruples [x,y,z,i, x,y,z,i, ...]
+    points: ArrayLike,  # Array of quadruples [x,y,z,i, x,y,z,i, ...]
     color: Optional[ArrayLike] = None,  # Default RGB color for all beams
     size: Optional[NumberLike] = None,  # Default size for all beams
     colors: Optional[ArrayLike] = None,  # Per-line colors
@@ -387,7 +412,7 @@ def LineBeams(
     """Create a line beams element.
 
     Args:
-        positions: Array of quadruples [x,y,z,i, x,y,z,i, ...] where points sharing the same i value are connected in sequence
+        points: Array of quadruples [x,y,z,i, x,y,z,i, ...] where points sharing the same i value are connected in sequence
         color: Default RGB color [r,g,b] for all beams if colors not provided
         size: Default size for all beams if sizes not provided
         colors: Array of RGB colors per line (optional)
@@ -400,7 +425,7 @@ def LineBeams(
         A LineBeams scene component that renders connected beam segments.
         Points are connected in sequence within groups sharing the same i value.
     """
-    data: Dict[str, Any] = {"positions": flatten_array(positions, dtype=np.float32)}
+    data: Dict[str, Any] = {"points": flatten_array(points, dtype=np.float32)}
 
     if color is not None:
         data["color"] = color

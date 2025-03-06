@@ -17,7 +17,7 @@ DEFAULT_CAMERA = {"up": [0, 0, 1], "fov": 45, "near": 0.1, "far": 100}
 print("Test 1: Point Cloud Picking.\nHover over points to highlight them in yellow.")
 
 scene_points = PointCloud(
-    positions=np.array([[-2, 0, 0], [-2, 0, 1], [-2, 1, 0], [-2, 1, 1]]),
+    centers=np.array([[-2, 0, 0], [-2, 0, 1], [-2, 1, 0], [-2, 1, 1]]),
     colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1]]),
     size=0.2,
     alpha=0.7,
@@ -29,6 +29,7 @@ scene_points = PointCloud(
             scale=1.5,
         ),
         deco([0], scale=4),
+        deco(None, scale=[1.2, 0.8, 1.0]),
     ],
 ) + (
     {
@@ -49,8 +50,11 @@ scene_ellipsoids = (
     Ellipsoid(
         centers=np.array([[0, 0, 0], [0, 1, 0], [0, 0.5, 1]]),
         colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
-        radius=[0.4, 0.4, 0.4],
+        half_size=[0.4, 0.4, 0.4],
         alpha=0.7,
+        quaternions=np.array(
+            [[1, 0, 0, 0], [0, 0.707, 0, 0.707], [0.5, 0, 0.5, 0.707]]
+        ),
         onHover=js(
             "(i) => $state.update({hover_ellipsoid: typeof i === 'number' ? [i] : []})"
         ),
@@ -60,12 +64,14 @@ scene_ellipsoids = (
                 color=[1, 1, 0],
                 scale=1.2,
             ),
+            deco([0], scale=1.5),
+            deco([1], scale=0.5),
         ],
     )
     + Ellipsoid(
         centers=np.array([[-1, 0, 0], [-1, 1, 0], [-1, 0.5, 1]]),
         colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
-        radius=[0.4, 0.4, 0.4],
+        half_size=0.4,
         alpha=0.5,
         onHover=js(
             "(i) => $state.update({hover_ellipsoid_2: typeof i === 'number' ? [i] : []})"
@@ -76,14 +82,20 @@ scene_ellipsoids = (
                 color=[1, 1, 0],
                 scale=1.2,
             ),
+            deco([0], scale=1.5),
+            deco([1], scale=0.5),
         ],
     )
     + EllipsoidAxes(
         centers=np.array(
             [[1, 0, 0], [1, 1, 0], [1, 0.5, 1]]
         ),  # Offset by 1 in x direction
-        radius=[0.4, 0.4, 0.4],
+        color=[0, 1, 0],
+        half_sizes=[0.4, 0.4, 0.4],
         alpha=0.8,
+        quaternions=np.array(
+            [[0.866, 0, 0.5, 0], [0.707, 0.707, 0, 0], [0.5, 0.5, 0.5, 0.5]]
+        ),
         onHover=js(
             "(i) => $state.update({hover_axes: typeof i === 'number' ? [i] : []})"
         ),
@@ -92,6 +104,8 @@ scene_ellipsoids = (
                 js("$state.hover_axes"),
                 color=[1, 1, 0],
             ),
+            deco([0], scale=1.5),
+            deco([1], scale=0.5),
         ],
     )
     + (
@@ -118,7 +132,8 @@ scene_cuboids = Cuboid(
     centers=np.array([[2, 0, 0], [2, 0, 1], [2, 0, 2]]),
     colors=np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]]),
     alphas=np.array([0.5, 0.7, 0.9]),
-    size=0.8,
+    half_size=0.4,
+    quaternions=np.array([[1, 0, 0, 0], [0.707, 0, 0.707, 0], [0.5, 0.5, 0.5, 0.5]]),
     onHover=js(
         "(i) => $state.update({hover_cuboid: typeof i === 'number' ? [i] : []})"
     ),
@@ -129,6 +144,8 @@ scene_cuboids = Cuboid(
             alpha=1.0,
             scale=1.1,
         ),
+        deco([0], scale=1.5),
+        deco([1], scale=0.5),
     ],
 ) + (
     {
@@ -139,12 +156,13 @@ scene_cuboids = Cuboid(
         }
     }
 )
+scene_cuboids
 
 # 4) Line Beams Picking
 print("Test 4: Line Beams Picking.\nHover over line segments.")
 
 scene_beams = LineBeams(
-    positions=np.array(
+    points=np.array(
         [
             -2,
             -2,
@@ -168,12 +186,14 @@ scene_beams = LineBeams(
     colors=np.array([[1, 0, 0], [0, 1, 0]]),
     size=0.1,
     alpha=0.7,
+    quaternions=np.array([[1, 0, 0, 0], [0.707, 0, 0.707, 0]]),
     onHover=js("(i) => $state.update({hover_beam: typeof i === 'number' ? [i] : []})"),
     decorations=[
         deco(
             js("$state.hover_beam"),
             color=[1, 1, 0],
         ),
+        deco(None, scale=[1.2, 0.8, 1.0]),
     ],
 ) + (
     {
@@ -194,7 +214,8 @@ mixed_scene = (
     Ellipsoid(
         centers=np.array([[2, -2, 0.5]]),
         colors=np.array([[1, 0, 0]]),
-        radius=[0.5, 0.5, 0.5],
+        half_sizes=[0.5, 0.5, 0.5],
+        quaternions=np.array([[0.707, 0, 0.707, 0]]),
         onHover=js(
             "(i) => $state.update({hover_mixed_ellipsoid: typeof i === 'number' ? [i] : []})"
         ),
@@ -203,12 +224,14 @@ mixed_scene = (
                 js("$state.hover_mixed_ellipsoid"),
                 color=[1, 1, 0],
             ),
+            deco(None, scale=[1.5, 0.7, 1.0]),
         ],
     )
     + PointCloud(
-        positions=np.array([[2, -2, 0], [2, -2, 1]]),
+        centers=np.array([[2, -2, 0], [2, -2, 1]]),
         colors=np.array([[0, 1, 0], [0, 0, 1]]),
         size=0.2,
+        quaternions=np.array([[1, 0, 0, 0], [0.707, 0.707, 0, 0]]),
         onHover=js(
             "(i) => $state.update({hover_mixed_point: typeof i === 'number' ? [i] : []})"
         ),
@@ -217,6 +240,7 @@ mixed_scene = (
                 js("$state.hover_mixed_point"),
                 color=[1, 1, 0],
             ),
+            deco(None, scale=[0.8, 1.2, 1.0]),
         ],
     )
     + (
@@ -241,24 +265,24 @@ print(
 x, y, z = np.meshgrid(
     np.linspace(4, 5.5, 4), np.linspace(-2, -0.5, 4), np.linspace(0, 1, 2)
 )
-positions = np.column_stack((x.ravel(), y.ravel(), z.ravel()))
+centers = np.column_stack((x.ravel(), y.ravel(), z.ravel()))
 
 # Generate colors based on position
-colors = np.zeros((len(positions), 3))
-colors[:, 0] = (positions[:, 0] - positions[:, 0].min()) / (
-    positions[:, 0].max() - positions[:, 0].min()
+colors = np.zeros((len(centers), 3))
+colors[:, 0] = (centers[:, 0] - centers[:, 0].min()) / (
+    centers[:, 0].max() - centers[:, 0].min()
 )
-colors[:, 1] = (positions[:, 1] - positions[:, 1].min()) / (
-    positions[:, 1].max() - positions[:, 1].min()
+colors[:, 1] = (centers[:, 1] - centers[:, 1].min()) / (
+    centers[:, 1].max() - centers[:, 1].min()
 )
-colors[:, 2] = (positions[:, 2] - positions[:, 2].min()) / (
-    positions[:, 2].max() - positions[:, 2].min()
+colors[:, 2] = (centers[:, 2] - centers[:, 2].min()) / (
+    centers[:, 2].max() - centers[:, 2].min()
 )
 
 scene_grid_cuboids = Cuboid(
-    centers=positions,
+    centers=centers,
     colors=colors,
-    size=0.3,
+    half_sizes=[0.15],
     alpha=0.85,
     onHover=js(
         "(i) => $state.update({hover_grid_cuboid: typeof i === 'number' ? [i] : []})"

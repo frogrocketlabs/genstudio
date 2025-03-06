@@ -162,7 +162,7 @@ from genstudio.plot import js
         # Use pre-generated frames based on animation state
         centers=js("$state.frames[$state.frame % 30].slice(0, $state.num_particles*3)"),
         colors=js("$state.colors.slice(0, $state.num_particles* 3 )"),
-        size=js("$state.point_size"),
+        half_size=js("$state.point_size"),
         alpha=js("$state.alpha"),
     )
     + {

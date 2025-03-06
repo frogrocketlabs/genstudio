@@ -59,17 +59,17 @@ export function createCubeGeometry() {
   // 6 faces => 24 verts, 36 indices
   const positions: number[] = [
     // +X face (right) - when looking at it from right side
-    0.5, -0.5, -0.5,   0.5, -0.5,  0.5,   0.5,  0.5, -0.5,   0.5,  0.5,  0.5,  // reordered: BL,BR,TL,TR
+    1.0, -1.0, -1.0,   1.0, -1.0,  1.0,   1.0,  1.0, -1.0,   1.0,  1.0,  1.0,  // reordered: BL,BR,TL,TR
     // -X face (left) - when looking at it from left side
-    -0.5, -0.5,  0.5,  -0.5, -0.5, -0.5,  -0.5,  0.5,  0.5,  -0.5,  0.5, -0.5,  // reordered: BL,BR,TL,TR
+    -1.0, -1.0,  1.0,  -1.0, -1.0, -1.0,  -1.0,  1.0,  1.0,  -1.0,  1.0, -1.0,  // reordered: BL,BR,TL,TR
     // +Y face (top) - when looking down at it
-    -0.5,  0.5, -0.5,   0.5,  0.5, -0.5,  -0.5,  0.5,  0.5,   0.5,  0.5,  0.5,  // reordered: BL,BR,TL,TR
+    -1.0,  1.0, -1.0,   1.0,  1.0, -1.0,  -1.0,  1.0,  1.0,   1.0,  1.0,  1.0,  // reordered: BL,BR,TL,TR
     // -Y face (bottom) - when looking up at it
-    -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,  -0.5, -0.5, -0.5,   0.5, -0.5, -0.5,  // reordered: BL,BR,TL,TR
+    -1.0, -1.0,  1.0,   1.0, -1.0,  1.0,  -1.0, -1.0, -1.0,   1.0, -1.0, -1.0,  // reordered: BL,BR,TL,TR
     // +Z face (front) - when looking at front
-    -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,  -0.5,  0.5,  0.5,   0.5,  0.5,  0.5,  // reordered: BL,BR,TL,TR
+    -1.0, -1.0,  1.0,   1.0, -1.0,  1.0,  -1.0,  1.0,  1.0,   1.0,  1.0,  1.0,  // reordered: BL,BR,TL,TR
     // -Z face (back) - when looking at it from behind
-     0.5, -0.5, -0.5,  -0.5, -0.5, -0.5,   0.5,  0.5, -0.5,  -0.5,  0.5, -0.5,  // reordered: BL,BR,TL,TR
+     1.0, -1.0, -1.0,  -1.0, -1.0, -1.0,   1.0,  1.0, -1.0,  -1.0,  1.0, -1.0,  // reordered: BL,BR,TL,TR
   ];
 
   // Normals stay the same as they define face orientation
@@ -126,11 +126,11 @@ export function createBeamGeometry() {
   const vertexData = new Float32Array(cube.vertexData);
 
   // Transform vertices:
-  // Move z from [-0.5,0.5] to [0,1] by adding 0.5
-  // This preserves the x,y centering while making z go from 0 to 1
+  // Scale z by 0.5 and translate by 0.5 to make beam start at origin
+  // and extend one unit in +z direction
   for(let i = 0; i < vertexData.length; i += 6) {
     // Only transform position z coordinate (first 3 components), not normals
-    vertexData[i + 2] = vertexData[i + 2] + 0.5;
+    vertexData[i + 2] = vertexData[i + 2] * 0.5 + 0.5;
   }
 
   return {

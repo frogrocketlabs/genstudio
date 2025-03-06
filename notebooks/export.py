@@ -38,12 +38,12 @@ ellipsoid_plot = (
     Plot.initialState({})
     | Ellipsoid(
         [0, 0, 0, 1, 1, 1],  # Center position
-        radius=0.5,
+        half_size=0.5,
         color=[1, 0, 0],  # Red color
     )
     & Ellipsoid(
         [0, 0, 0, 1, 1, 1],  # Center position
-        radius=0.5,
+        half_size=0.5,
         color=[1, 1, 0],
     )
     | dots
@@ -128,7 +128,7 @@ animated_scene = Plot.initialState({"t": 0}) | Ellipsoid(
                 return [x, y, z];
             }).flat()
         """),
-    radius=0.1,
+    half_size=0.1,
     color=Plot.js("""
             (d, i) => {
                 const j = Math.floor(i / 3);

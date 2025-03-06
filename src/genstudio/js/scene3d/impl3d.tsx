@@ -23,7 +23,7 @@ import {
   zoom
 } from './camera3d';
 
-import { ComponentConfig, cuboidSpec, ellipsoidAxesSpec, ellipsoidSpec, lineBeamsSpec, pointCloudSpec, } from './components';
+import { ComponentConfig, cuboidSpec, ellipsoidAxesSpec, ellipsoidSpec, lineBeamsSpec, pointCloudSpec, buildPickingData, buildRenderData } from './components';
 import { unpackID } from './picking';
 import { LIGHTING } from './shaders';
 import { BufferInfo, GeometryResources, GeometryResource, PrimitiveSpec, RenderObject, PipelineCacheEntry, DynamicBuffers, RenderObjectCache, ComponentOffset } from './types';
@@ -119,7 +119,7 @@ function ensurePickingData(device: GPUDevice, components: ComponentConfig[], ro:
 
     // Build picking data for this component
     const baseID = offset.start;
-    ro.spec.buildPickingData(component, componentView, baseID, componentIndices);
+    buildPickingData(component, ro.spec, componentView, baseID, componentIndices);
 
     dataOffset += componentFloats;
   }
@@ -842,7 +842,8 @@ export function SceneInner({
           );
 
           // Build render data directly into the view
-          spec.buildRenderData(info.components[i], componentView);
+
+          buildRenderData(info.components[i], spec, componentView);
 
           renderDataOffset += componentFloats;
         }
@@ -1024,7 +1025,7 @@ export function SceneInner({
         );
 
         // Build render data for this component
-        ro.spec.buildRenderData(component, componentView, componentPartitions[i]);
+        buildRenderData(component, ro.spec, componentView, componentPartitions[i]);
 
         dataOffset += componentFloats;
       }

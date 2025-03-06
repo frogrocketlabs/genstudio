@@ -50,7 +50,7 @@ def test_counter_plot():
                     ];
                 }).flat()
             """),
-            radius=0.1,
+            half_size=0.1,
             color=[1, 0, 0],  # Red color for all ellipsoids
         )
     )

@@ -43,7 +43,7 @@ red_ellipsoid_pos = cam_position + distance * forward1
 x_pos_target = Ellipsoid(
     centers=red_ellipsoid_pos,
     colors=np.array([[1, 0, 0]]),  # Red
-    radius=[0.2, 0.2, 0.2],
+    half_size=[0.2, 0.2, 0.2],
 )
 
 green_cube_pos = cam_position + compute_offset_position(
@@ -68,7 +68,7 @@ yellow_points_pos = cam_position + compute_offset_position(
     distance, forward1, cam_up_z, offset_angle
 )
 z_pos_target = PointCloud(
-    positions=yellow_points_pos,
+    centers=yellow_points_pos,
     colors=np.array([[1, 1, 0]]),  # Yellow
     size=0.3,
 )
@@ -77,7 +77,7 @@ purple_points_pos = cam_position + compute_offset_position(
     distance, forward1, -cam_up_z, offset_angle
 )
 z_neg_target = PointCloud(
-    positions=purple_points_pos,
+    centers=purple_points_pos,
     colors=np.array([[1, 0, 1]]),  # Purple
     size=0.3,
 )
@@ -123,7 +123,7 @@ red_ellipsoid_pos2 = cam_position + compute_offset_position(
 x_pos_target_2 = Ellipsoid(
     centers=red_ellipsoid_pos2,
     colors=np.array([[1, 0, 0]]),  # Red
-    radius=[0.2, 0.2, 0.2],
+    half_size=[0.2, 0.2, 0.2],
 )
 
 # Yellow points 45° upward (using up):
@@ -131,7 +131,7 @@ yellow_points_pos2 = cam_position + compute_offset_position(
     distance, forward2, cam_up_z, offset_angle
 )
 z_pos_target_2 = PointCloud(
-    positions=yellow_points_pos2,
+    centers=yellow_points_pos2,
     colors=np.array([[1, 1, 0]]),  # Yellow
     size=0.3,
 )
@@ -141,7 +141,7 @@ purple_points_pos2 = cam_position + compute_offset_position(
     distance, forward2, -cam_up_z, offset_angle
 )
 z_neg_target_2 = PointCloud(
-    positions=purple_points_pos2,
+    centers=purple_points_pos2,
     colors=np.array([[1, 0, 1]]),  # Purple
     size=0.3,
 )
@@ -174,7 +174,7 @@ left3 = -right3  # (1,0,0)
 # Yellow points directly ahead:
 yellow_points_pos3 = cam_position + distance * forward3
 z_pos_target_3 = PointCloud(
-    positions=yellow_points_pos3,
+    centers=yellow_points_pos3,
     colors=np.array([[1, 1, 0]]),  # Yellow
     size=0.3,
 )
@@ -186,7 +186,7 @@ red_ellipsoid_pos3 = cam_position + compute_offset_position(
 x_pos_target_3 = Ellipsoid(
     centers=red_ellipsoid_pos3,
     colors=np.array([[1, 0, 0]]),  # Red
-    radius=[0.2, 0.2, 0.2],
+    half_size=[0.2, 0.2, 0.2],
 )
 
 # Green cube 45° upward:

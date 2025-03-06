@@ -7,7 +7,8 @@
  */
 
 import React, { useMemo, useState, useCallback, useEffect, useRef, useContext } from 'react';
-import { SceneInner, ComponentConfig, PointCloudComponentConfig, EllipsoidComponentConfig, EllipsoidAxesComponentConfig, CuboidComponentConfig, LineBeamsComponentConfig } from './impl3d';
+import { SceneInner } from './impl3d';
+import {ComponentConfig, PointCloudComponentConfig, EllipsoidComponentConfig, EllipsoidAxesComponentConfig, CuboidComponentConfig, LineBeamsComponentConfig} from './components'
 import { CameraParams, DEFAULT_CAMERA } from './camera3d';
 import { useContainerWidth } from '../utils';
 import { FPSCounter, useFPSCounter } from './fps';
@@ -70,7 +71,7 @@ export function deco(
  */
 export function PointCloud(props: PointCloudComponentConfig): PointCloudComponentConfig {
   return {
-    ...coerceFloat32Fields(props, ['positions', 'colors', 'sizes']),
+    ...coerceFloat32Fields(props, ['centers', 'colors', 'sizes']),
     type: 'PointCloud',
   };
 }
@@ -81,13 +82,13 @@ export function PointCloud(props: PointCloudComponentConfig): PointCloudComponen
  * @returns {EllipsoidComponentConfig} Configuration for rendering ellipsoids in 3D space
  */
 export function Ellipsoid(props: EllipsoidComponentConfig): EllipsoidComponentConfig {
-  const radius = typeof props.radius === 'number' ?
-    [props.radius, props.radius, props.radius] as [number, number, number] :
-    props.radius;
+  const half_size = typeof props.half_size === 'number' ?
+    [props.half_size, props.half_size, props.half_size] as [number, number, number] :
+    props.half_size;
 
   return {
-    ...coerceFloat32Fields(props, ['centers', 'radii', 'colors', 'alphas']),
-    radius,
+    ...coerceFloat32Fields(props, ['centers', 'half_sizes', 'quaternions', 'colors', 'alphas']),
+    half_size,
     type: 'Ellipsoid'
   };
 }
@@ -98,13 +99,13 @@ export function Ellipsoid(props: EllipsoidComponentConfig): EllipsoidComponentCo
  * @returns {EllipsoidAxesComponentConfig} Configuration for rendering ellipsoid axes in 3D space
  */
 export function EllipsoidAxes(props: EllipsoidAxesComponentConfig): EllipsoidAxesComponentConfig {
-  const radius = typeof props.radius === 'number' ?
-    [props.radius, props.radius, props.radius] as [number, number, number] :
-    props.radius;
+  const half_size = typeof props.half_size === 'number' ?
+    [props.half_size, props.half_size, props.half_size] as [number, number, number] :
+    props.half_size;
 
   return {
-    ...coerceFloat32Fields(props, ['centers', 'radii', 'colors', 'alphas']),
-    radius,
+    ...coerceFloat32Fields(props, ['centers', 'half_sizes', 'quaternions', 'colors', 'alphas']),
+    half_size,
     type: 'EllipsoidAxes'
   };
 }
@@ -115,13 +116,13 @@ export function EllipsoidAxes(props: EllipsoidAxesComponentConfig): EllipsoidAxe
  * @returns {CuboidComponentConfig} Configuration for rendering cuboids in 3D space
  */
 export function Cuboid(props: CuboidComponentConfig): CuboidComponentConfig {
-  const size = typeof props.size === 'number' ?
-    [props.size, props.size, props.size] as [number, number, number] :
-    props.size;
+  const half_size = typeof props.half_size === 'number' ?
+    [props.half_size, props.half_size, props.half_size] as [number, number, number] :
+    props.half_size;
 
   return {
-    ...coerceFloat32Fields(props, ['centers', 'sizes', 'colors', 'alphas']),
-    size,
+    ...coerceFloat32Fields(props, ['centers', 'half_sizes', 'quaternions', 'colors', 'alphas']),
+    half_size,
     type: 'Cuboid'
   };
 }
@@ -133,7 +134,7 @@ export function Cuboid(props: CuboidComponentConfig): CuboidComponentConfig {
  */
 export function LineBeams(props: LineBeamsComponentConfig): LineBeamsComponentConfig {
   return {
-    ...coerceFloat32Fields(props, ['positions', 'colors']),
+    ...coerceFloat32Fields(props, ['points', 'colors']),
     type: 'LineBeams'
   };
 }
@@ -243,8 +244,8 @@ function DevMenu({ showFps, onToggleFps, onCopyCamera, position, onClose }: DevM
  * ```tsx
  * <Scene
  *   components={[
- *     PointCloud({ positions: points, color: [1,0,0] }),
- *     Ellipsoid({ centers: centers, radius: 0.1 })
+ *     PointCloud({ centers: points, color: [1,0,0] }),
+ *     Ellipsoid({ centers: centers, half_size: 0.1 })
  *   ]}
  *   width={800}
  *   height={600}
