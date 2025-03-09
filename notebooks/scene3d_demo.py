@@ -1,5 +1,5 @@
 import numpy as np
-from genstudio.scene3d import PointCloud, Ellipsoid, EllipsoidAxes, Cuboid, deco
+from genstudio.scene3d import PointCloud, Ellipsoid, Cuboid, deco
 import genstudio.plot as Plot
 import math
 
@@ -65,38 +65,35 @@ def create_demo_scene():
         +
         # Ellipsoids with one highlighted and rotations
         Ellipsoid(
-            centers=np.array([[0.5, 0.5, 0.5], [-0.5, -0.5, 0.5], [0.0, 0.0, 0.0]]),
-            half_sizes=np.array([[0.1, 0.2, 0.1], [0.2, 0.1, 0.1], [0.15, 0.15, 0.15]]),
-            colors=np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
+            centers=[0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.0, 0.0, 0.0],
+            half_sizes=[0.1, 0.2, 0.1, 0.2, 0.1, 0.1, 0.15, 0.15, 0.15],
+            colors=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
             quaternions=ellipsoid_quats,
             decorations=[deco([1], color=[1, 1, 0], alpha=0.8)],
         )
         +
         # Ellipsoid bounds with transparency and rotations
-        EllipsoidAxes(
-            centers=np.array([[0.8, 0.0, 0.0], [-0.8, 0.0, 0.0]]),
-            half_sizes=np.array([[0.2, 0.1, 0.1], [0.1, 0.2, 0.1]]),
-            colors=np.array([[1.0, 0.5, 0.0], [0.0, 0.5, 1.0]]),
-            quaternions=np.array(
-                [
-                    axis_angle_to_quat([1, 0, 0], math.pi / 3),
-                    axis_angle_to_quat([0, 1, 0], math.pi / 4),
-                ]
-            ),
+        Ellipsoid(
+            fill_mode="MajorWireframe",
+            centers=[0.8, 0.0, 0.0, -0.8, 0.0, 0.0],
+            half_sizes=[0.2, 0.1, 0.1, 0.1, 0.2, 0.1],
+            colors=[1.0, 0.5, 0.0, 0.0, 0.5, 1.0],
+            quaternions=[
+                axis_angle_to_quat([1, 0, 0], math.pi / 3),
+                axis_angle_to_quat([0, 1, 0], math.pi / 4),
+            ],
             decorations=[deco([0, 1], alpha=0.5)],
         )
         +
         # Cuboids with one enlarged
         Cuboid(
-            centers=np.array([[0.0, -0.8, 0.0], [0.0, -0.8, 0.3]]),
-            half_sizes=np.array([[0.15, 0.05, 0.1], [0.1, 0.05, 0.1]]),
-            colors=np.array([[0.8, 0.2, 0.8], [0.2, 0.8, 0.8]]),
-            quaternions=np.array(
-                [
-                    axis_angle_to_quat([0, 0, 1], math.pi / 6),
-                    axis_angle_to_quat([1, 1, 1], math.pi / 4),
-                ]
-            ),
+            centers=[0.0, -0.8, 0.0, 0.0, -0.8, 0.3],
+            half_sizes=[0.15, 0.05, 0.1, 0.1, 0.05, 0.1],
+            colors=[0.8, 0.2, 0.8, 0.2, 0.8, 0.8],
+            quaternions=[
+                axis_angle_to_quat([0, 0, 1], math.pi / 6),
+                axis_angle_to_quat([1, 1, 1], math.pi / 4),
+            ],
             decorations=[deco([0], scale=1.2)],
         )
     )

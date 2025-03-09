@@ -6,7 +6,6 @@ from genstudio.scene3d import (
     LineBeams,
     PointCloud,
     deco,
-    EllipsoidAxes,
 )
 from genstudio.plot import js
 
@@ -86,7 +85,8 @@ scene_ellipsoids = (
             deco([1], scale=0.5),
         ],
     )
-    + EllipsoidAxes(
+    + Ellipsoid(
+        fill_mode="MajorWireframe",
         centers=np.array(
             [[1, 0, 0], [1, 1, 0], [1, 0.5, 1]]
         ),  # Offset by 1 in x direction

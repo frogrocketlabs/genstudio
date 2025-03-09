@@ -74,35 +74,11 @@ Parameters
 
 - `alpha` (Optional[NumberLike]): Default alpha value for all ellipsoids if alphas not provided
 
-- `**kwargs` (Any): Additional arguments like decorations, onHover, onClick
+- `fill_mode` (str): How the shape is drawn. One of:
 
+    - "Solid": Filled surface with solid color
 
-
-### EllipsoidAxes {: .api .api-member }
-
-Create an ellipsoid bounds (wireframe) element.
-
-Parameters
-{: .api .api-section }
-
-
-- `centers` (ArrayLike): Nx3 array of ellipsoid centers or flattened array
-
-- `half_sizes` (Optional[ArrayLike]): Nx3 array of half_sizes (x,y,z) or flattened array (optional)
-
-- `half_size` (Optional[Union[NumberLike, ArrayLike]]): Default half_size (sphere) or [x,y,z] half_sizes (ellipsoid) if half_sizes not provided
-
-- `quaternions` (Optional[ArrayLike]): Nx4 array of orientation quaternions [x,y,z,w] (optional)
-
-- `quaternion` (Optional[ArrayLike]): Default orientation quaternion [x,y,z,w] if quaternions not provided
-
-- `colors` (Optional[ArrayLike]): Nx3 array of RGB colors or flattened array (optional)
-
-- `color` (Optional[ArrayLike]): Default RGB color [r,g,b] for all ellipsoids if colors not provided
-
-- `alphas` (Optional[ArrayLike]): Array of alpha values per ellipsoid (optional)
-
-- `alpha` (Optional[NumberLike]): Default alpha value for all ellipsoids if alphas not provided
+    - "MajorWireframe": Three axis-aligned ellipse cross-sections
 
 - `**kwargs` (Any): Additional arguments like decorations, onHover, onClick
 

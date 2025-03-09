@@ -8,7 +8,7 @@
 
 import React, { useMemo, useState, useCallback, useEffect, useRef, useContext } from 'react';
 import { SceneInner } from './impl3d';
-import {ComponentConfig, PointCloudComponentConfig, EllipsoidComponentConfig, EllipsoidAxesComponentConfig, CuboidComponentConfig, LineBeamsComponentConfig} from './components'
+import { ComponentConfig, PointCloudComponentConfig, CuboidComponentConfig, EllipsoidComponentConfig, LineBeamsComponentConfig } from './components';
 import { CameraParams, DEFAULT_CAMERA } from './camera3d';
 import { useContainerWidth } from '../utils';
 import { FPSCounter, useFPSCounter } from './fps';
@@ -81,32 +81,17 @@ export function PointCloud(props: PointCloudComponentConfig): PointCloudComponen
  * @param props - Ellipsoid configuration properties
  * @returns {EllipsoidComponentConfig} Configuration for rendering ellipsoids in 3D space
  */
-export function Ellipsoid(props: EllipsoidComponentConfig): EllipsoidComponentConfig {
+export function Ellipsoid(props: Omit<EllipsoidComponentConfig, 'type'>): EllipsoidComponentConfig {
   const half_size = typeof props.half_size === 'number' ?
     [props.half_size, props.half_size, props.half_size] as [number, number, number] :
     props.half_size;
 
-  return {
-    ...coerceFloat32Fields(props, ['centers', 'half_sizes', 'quaternions', 'colors', 'alphas']),
-    half_size,
-    type: 'Ellipsoid'
-  };
-}
-
-/**
- * Creates an ellipsoid axes component configuration.
- * @param props - Ellipsoid axes configuration properties
- * @returns {EllipsoidAxesComponentConfig} Configuration for rendering ellipsoid axes in 3D space
- */
-export function EllipsoidAxes(props: EllipsoidAxesComponentConfig): EllipsoidAxesComponentConfig {
-  const half_size = typeof props.half_size === 'number' ?
-    [props.half_size, props.half_size, props.half_size] as [number, number, number] :
-    props.half_size;
+  const fillMode = props.fill_mode || 'Solid'
 
   return {
     ...coerceFloat32Fields(props, ['centers', 'half_sizes', 'quaternions', 'colors', 'alphas']),
     half_size,
-    type: 'EllipsoidAxes'
+    type: fillMode === 'Solid' ? 'Ellipsoid' : 'EllipsoidAxes'
   };
 }
 

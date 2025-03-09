@@ -7,7 +7,6 @@
 from genstudio.scene3d import (
     Cuboid,
     Ellipsoid,
-    EllipsoidAxes,
     LineBeams,
     PointCloud,
     deco,
@@ -75,7 +74,7 @@ scene_pc
 # %% [markdown]
 # ## Other Primitives
 #
-# Scene3D supports several primitive types: PointCloud, Ellipsoid, EllipsoidAxes (wireframe), Cuboid, and LineBeams.
+# Scene3D supports several primitive types: PointCloud, Ellipsoid, Cuboid, and LineBeams.
 
 # %%
 
@@ -97,7 +96,7 @@ gaussian_cloud = PointCloud(centers=gaussian_centers, colors=gaussian_colors, si
             [0, 0, 0],
             [1.5, 0, 0],
         ],
-        half_size=[0.5, 0.5, 0.5],  # Can be a single value or a list per instance
+        half_sizes=[0.5, 0.5, 0.5],  # Can be a single value or a list per instance
         colors=np.array(
             [
                 [0, 1, 1],  # cyan
@@ -110,16 +109,17 @@ gaussian_cloud = PointCloud(centers=gaussian_centers, colors=gaussian_colors, si
 )
 
 # Create a wireframe ellipsoid
-wireframe = EllipsoidAxes(
+wireframe = Ellipsoid(
+    fill_mode="MajorWireframe",
     centers=[[0, 0, 0]],
-    half_size=[0.7, 0.7, 0.7],
+    half_sizes=[0.7, 0.7, 0.7],
     color=[1, 1, 1],  # white
 )
 
 # Create a cuboid component
 cuboid = Cuboid(
     centers=np.array([[0, 2, 0.5]], dtype=np.float32),
-    half_size=[0.5, 0.5, 0.5],
+    half_sizes=[0.5, 0.5, 0.5],
     color=[1, 0.5, 0],  # orange
     alpha=0.8,
 )

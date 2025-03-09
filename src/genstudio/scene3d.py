@@ -253,6 +253,8 @@ def Ellipsoid(
     color: Optional[ArrayLike] = None,  # Default RGB color for all ellipsoids
     alphas: Optional[ArrayLike] = None,
     alpha: Optional[NumberLike] = None,  # Default alpha for all ellipsoids
+    fill_mode: str
+    | None = None,  # How the shape is drawn ("Solid" or "MajorWireframe")
     **kwargs: Any,
 ) -> SceneComponent:
     """Create an ellipsoid element.
@@ -267,6 +269,9 @@ def Ellipsoid(
         color: Default RGB color [r,g,b] for all ellipsoids if colors not provided
         alphas: Array of alpha values per ellipsoid (optional)
         alpha: Default alpha value for all ellipsoids if alphas not provided
+        fill_mode: How the shape is drawn. One of:
+            - "Solid": Filled surface with solid color
+            - "MajorWireframe": Three axis-aligned ellipse cross-sections
         **kwargs: Additional arguments like decorations, onHover, onClick
     """
     centers = flatten_array(centers, dtype=np.float32)
@@ -291,60 +296,10 @@ def Ellipsoid(
         data["alphas"] = flatten_array(alphas, dtype=np.float32)
     elif alpha is not None:
         data["alpha"] = alpha
+    elif fill_mode is not None:
+        data["fill_mode"] = fill_mode
 
     return SceneComponent("Ellipsoid", data, **kwargs)
-
-
-def EllipsoidAxes(
-    centers: ArrayLike,
-    half_sizes: Optional[ArrayLike] = None,
-    half_size: Optional[Union[NumberLike, ArrayLike]] = None,  # Single value or [x,y,z]
-    quaternions: Optional[ArrayLike] = None,  # Nx4 array of quaternions [x,y,z,w]
-    quaternion: Optional[ArrayLike] = None,  # Default orientation quaternion [x,y,z,w]
-    colors: Optional[ArrayLike] = None,
-    color: Optional[ArrayLike] = None,  # Default RGB color for all ellipsoids
-    alphas: Optional[ArrayLike] = None,  # Per-ellipsoid alpha values
-    alpha: Optional[NumberLike] = None,  # Default alpha for all ellipsoids
-    **kwargs: Any,
-) -> SceneComponent:
-    """Create an ellipsoid bounds (wireframe) element.
-
-    Args:
-        centers: Nx3 array of ellipsoid centers or flattened array
-        half_sizes: Nx3 array of half_sizes (x,y,z) or flattened array (optional)
-        half_size: Default half_size (sphere) or [x,y,z] half_sizes (ellipsoid) if half_sizes not provided
-        quaternions: Nx4 array of orientation quaternions [x,y,z,w] (optional)
-        quaternion: Default orientation quaternion [x,y,z,w] if quaternions not provided
-        colors: Nx3 array of RGB colors or flattened array (optional)
-        color: Default RGB color [r,g,b] for all ellipsoids if colors not provided
-        alphas: Array of alpha values per ellipsoid (optional)
-        alpha: Default alpha value for all ellipsoids if alphas not provided
-        **kwargs: Additional arguments like decorations, onHover, onClick
-    """
-    centers = flatten_array(centers, dtype=np.float32)
-    data: Dict[str, Any] = {"centers": centers}
-
-    if half_sizes is not None:
-        data["half_sizes"] = flatten_array(half_sizes, dtype=np.float32)
-    elif half_size is not None:
-        data["half_size"] = half_size
-
-    if quaternions is not None:
-        data["quaternions"] = flatten_array(quaternions, dtype=np.float32)
-    elif quaternion is not None:
-        data["quaternion"] = quaternion
-
-    if colors is not None:
-        data["colors"] = flatten_array(colors, dtype=np.float32)
-    elif color is not None:
-        data["color"] = color
-
-    if alphas is not None:
-        data["alphas"] = flatten_array(alphas, dtype=np.float32)
-    elif alpha is not None:
-        data["alpha"] = alpha
-
-    return SceneComponent("EllipsoidAxes", data, **kwargs)
 
 
 def Cuboid(
@@ -447,7 +402,6 @@ __all__ = [
     "Scene",
     "PointCloud",
     "Ellipsoid",
-    "EllipsoidAxes",
     "Cuboid",
     "LineBeams",
     "deco",

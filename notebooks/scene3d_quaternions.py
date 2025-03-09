@@ -3,7 +3,6 @@ import numpy as np
 from genstudio.scene3d import (
     Ellipsoid,
     Cuboid,
-    EllipsoidAxes,
     deco,
 )
 from genstudio.plot import js
@@ -141,7 +140,8 @@ quaternions = np.array(
 )
 
 # Create ellipsoid axes with different orientations
-scene_ellipsoid_axes = EllipsoidAxes(
+scene_ellipsoid_axes = Ellipsoid(
+    fill_mode="MajorWireframe",
     centers=centers,
     half_size=[0.5, 0.3, 0.2],  # Non-uniform half-size to show rotation clearly
     quaternions=quaternions,

@@ -1,5 +1,6 @@
+// components.ts
+
 import {
-  LIGHTING,
   billboardVertCode,
   billboardFragCode,
   billboardPickingVertCode,
@@ -574,13 +575,13 @@ export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
 /** ===================== ELLIPSOID ===================== **/
 
 export interface EllipsoidComponentConfig extends BaseComponentConfig {
-  type: "Ellipsoid";
-  centers: Float32Array;
-  // Support both forms since computeConstants handles both
-  half_sizes?: Float32Array;
-  half_size?: number | [number, number, number];
-  quaternions?: Float32Array;
+  type: 'Ellipsoid' | 'EllipsoidAxes';
+  centers: Float32Array | number[];
+  half_sizes?: Float32Array | number[];
+  half_size?: [number, number, number] | number;
+  quaternions?: Float32Array | number[];
   quaternion?: [number, number, number, number];
+  fill_mode?: 'Solid' | 'MajorWireframe';
 }
 
 export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
@@ -725,16 +726,7 @@ export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
 
 /** ===================== ELLIPSOID AXES (3 rings) ===================== **/
 
-export interface EllipsoidAxesComponentConfig extends BaseComponentConfig {
-  type: "EllipsoidAxes";
-  centers: Float32Array;
-  half_sizes?: Float32Array;
-  half_size?: number | [number, number, number];
-  quaternions?: Float32Array;
-  quaternion?: [number, number, number, number];
-}
-
-export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
+export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
   type: "EllipsoidAxes",
 
   defaults: {
@@ -879,10 +871,10 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidAxesComponentConfig> = {
   },
 
   applyDecoration(out, instanceIndex, dec, floatsPerInstance) {
-    // Apply to all three rings of the target ellipsoid
-    for (let ring = 0; ring < 3; ring++) {
-      const ringIndex = instanceIndex * 3 + ring;
-      applyDefaultDecoration(out, ringIndex * floatsPerInstance, dec, this);
+      // Apply to all three rings of the target ellipsoid
+      for (let ring = 0; ring < 3; ring++) {
+        const ringIndex = instanceIndex * 3 + ring;
+        applyDefaultDecoration(out, ringIndex * floatsPerInstance, dec, this);
     }
   },
 };
@@ -1250,6 +1242,5 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
 export type ComponentConfig =
   | PointCloudComponentConfig
   | EllipsoidComponentConfig
-  | EllipsoidAxesComponentConfig
   | CuboidComponentConfig
   | LineBeamsComponentConfig;

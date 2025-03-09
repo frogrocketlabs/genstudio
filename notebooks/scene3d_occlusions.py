@@ -2,7 +2,6 @@ import numpy as np
 from genstudio.scene3d import (
     PointCloud,
     Ellipsoid,
-    EllipsoidAxes,
     Cuboid,
     deco,
     LineBeams,
@@ -123,7 +122,8 @@ def create_demo_scene():
         )
         +
         # Ellipsoid axes - one pair
-        EllipsoidAxes(
+        Ellipsoid(
+            fill_mode="MajorWireframe",
             centers=np.array(
                 [
                     [-0.2, 0.0, 0.0],  # First (solid)

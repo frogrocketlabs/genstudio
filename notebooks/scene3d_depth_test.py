@@ -11,15 +11,15 @@ print(
     "Two overlapping ellipsoids: green (higher z) should occlude red."
 )
 
-scene_opaque = Ellipsoid(
+scene_1 = Ellipsoid(
     centers=np.array([[-8, 1, 0], [-8, 1, 0.5]]),
     colors=np.array(
         [
             [1, 0, 0],  # red
-            [0, 1, 0],
+            [0, 1, 0],  # green
         ]
     ),
-    half_size=[0.5, 0.5, 0.5],
+    half_size=0.5,
 ) + (
     {
         "defaultCamera": {
@@ -37,7 +37,7 @@ print(
     "Overlapping blue and semi-transparent yellow ellipsoids should blend."
 )
 
-scene_transparent = Ellipsoid(
+scene_2 = Ellipsoid(
     centers=np.array([[-8, -1, 0], [-8, -1, 0.5]]),
     colors=np.array(
         [
@@ -46,7 +46,7 @@ scene_transparent = Ellipsoid(
         ]
     ),
     alphas=np.array([1.0, 0.5]),
-    half_size=[0.5, 0.5, 0.5],
+    half_size=0.5,
 ) + (
     {
         "defaultCamera": {
@@ -64,18 +64,18 @@ print(
 )
 
 cuboid_component = Cuboid(
-    centers=np.array([[-4, 0, 0.5]]),
-    colors=np.array([[1, 0.5, 0]]),
-    alphas=np.array([0.5]),
-    half_size=[1, 1, 1],
+    centers=[[-4, 0, 0.5]],
+    colors=[[1, 0.5, 0]],
+    alphas=[0.5],
+    half_size=0.5,
 )
 pointcloud_component = PointCloud(
-    centers=np.array([[-4, 0, 0]]),
-    colors=np.array([[0, 1, 1]]),
-    alphas=np.array([0.8]),
+    centers=[[-4, 0, 0]],
+    colors=[[0, 1, 1]],
+    alphas=[0.8],
     size=0.2,
 )
-scene_order = (
+scene_3 = (
     cuboid_component
     + pointcloud_component
     + (
@@ -96,17 +96,17 @@ print(
     "Four vertical points with alternating opaque/semi-transparent alphas."
 )
 
-scene_pc_alpha = PointCloud(
-    centers=np.array([[0, 2, 0], [0, 2, 0.5], [0, 2, 1.0], [0, 2, 1.5]]),
-    colors=np.array([[1, 0, 1], [0, 1, 1], [1, 1, 1], [0.5, 0.5, 0.5]]),
-    alphas=np.array([1.0, 0.5, 1.0, 0.5]),
+scene_4 = PointCloud(
+    centers=[0, 2, 0, 0, 2, 0.5, 0, 2, 1.0, 0, 2, 1.5],
+    colors=[1, 0, 1, 0, 1, 1, 1, 1, 1, 0.5, 0.5, 0.5],
+    alphas=[1.0, 0.5, 1.0, 0.5],
     size=0.1,
 ) + (
     {
         "defaultCamera": {
             **DEFAULT_CAMERA,
-            "position": [2, 4, 2],
-            "target": [0, 2, 0.75],
+            "position": [0.076180, 2.110072, -0.497107],
+            "target": [0.000000, 2.000000, 0.750000],
         }
     }
 )
@@ -119,11 +119,11 @@ print(
 
 cuboid_centers = np.array([[2, -1, 0], [2, -1, 0.5], [2, -1, 1.0]])
 cuboid_colors = np.array([[0.8, 0.8, 0.8], [0.8, 0.8, 0.8], [0.8, 0.8, 0.8]])
-scene_deco = Cuboid(
+scene_5 = Cuboid(
     centers=cuboid_centers,
     colors=cuboid_colors,
     alphas=np.array([1.0, 1.0, 1.0]),
-    half_size=[0.8, 0.8, 0.8],
+    half_size=0.4,
     decorations=[
         # Override instance index 1: change color to red, set alpha to 0.5, and scale up by 1.2.
         deco(1, color=[1.0, 0.0, 0.0], alpha=0.5, scale=1.2)
@@ -132,8 +132,8 @@ scene_deco = Cuboid(
     {
         "defaultCamera": {
             **DEFAULT_CAMERA,
-            "position": [2, 0, 3],
-            "target": [2, -1, 0.5],
+            "position": [2.053780, 1.688640, 0.635353],
+            "target": [2.000000, -1.000000, 0.500000],
         }
     }
 )
@@ -145,17 +145,17 @@ print(
     "Two ellipsoids: one nearly invisible (α=0.01), one almost opaque (α=0.99)."
 )
 
-scene_extreme = Ellipsoid(
+scene_6 = Ellipsoid(
     centers=np.array([[-6, -2, 0], [-6, -2, 0.5]]),
     colors=np.array([[0.2, 0.2, 0.2], [0.9, 0.9, 0.9]]),
-    alphas=np.array([0.1, 0.99]),
-    half_size=[0.4, 0.4, 0.4],
+    alphas=np.array([0.5, 0.99]),
+    half_size=0.4,
 ) + (
     {
         "defaultCamera": {
             **DEFAULT_CAMERA,
-            "position": [-6, -4, 3],
-            "target": [-6, -2, 0.25],
+            "position": [-6.101873, -4.035756, -2.471731],
+            "target": [-6.000000, -2.000000, 0.250000],
         }
     }
 )
@@ -190,9 +190,7 @@ mixed_pointcloud = PointCloud(
     size=0.1,
 )
 
-scene_mixed = (
-    mixed_ellipsoids + mixed_cuboids + mixed_linebeams + mixed_pointcloud
-) + (
+scene_7 = (mixed_ellipsoids + mixed_cuboids + mixed_linebeams + mixed_pointcloud) + (
     {
         "defaultCamera": {
             **DEFAULT_CAMERA,
@@ -221,7 +219,7 @@ pointcloud_component2 = PointCloud(
     alpha=0.5,
 )
 
-scene_insertion = (pointcloud_component1 + pointcloud_component2) + (
+scene_8 = (pointcloud_component1 + pointcloud_component2) + (
     {
         "defaultCamera": {
             **DEFAULT_CAMERA,
@@ -231,9 +229,5 @@ scene_insertion = (pointcloud_component1 + pointcloud_component2) + (
     }
 )
 
-(
-    scene_deco & scene_extreme & scene_pc_alpha
-    | scene_insertion & scene_mixed & scene_transparent
-    | scene_opaque & scene_order
-)
+(scene_1 & scene_2 & scene_3 | scene_4 & scene_5 & scene_6 | scene_7 & scene_8)
 # %%
