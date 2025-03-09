@@ -1,3 +1,15 @@
+### [2025.3.4] - Mar 09, 2025
+
+- Add fill_mode ('Solid', 'MajorWireframe') to Ellipsoid, deprecate EllipsoidAxes
+- add 'quaternion' / 'quaternions' to 3d shapes
+
+BREAKING CHANGES:
+- PointCloud: positions => centers
+- LineBeam: positions => points
+- Cuboid: size/sizes => half_size/half_sizes
+- Ellipsoid: radius/radii => half_size/half_sizes
+- remove EllipsoidAxes
+
 ### [2025.3.3] - Mar 06, 2025
 
 - add plot.save_pdf(...) with webgpu/scene3d support
