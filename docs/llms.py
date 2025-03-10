@@ -1069,4 +1069,48 @@ camera = {
 )
 # </example>
 # %%
+# <example>
+# User: Show me how to use the bitmap component with different types of pixel data.
+# Assistant:
+import genstudio.plot as Plot
+import numpy as np
+from genstudio.components.bitmap import bitmap
+
+# Example 1: Create a simple red square using a 3D numpy array
+red_pixels = np.zeros((2, 2, 3), dtype=np.uint8)
+red_pixels[:, :, 0] = 255  # Set red channel to max
+red_square = bitmap(red_pixels)
+
+# Example 2: Create a grayscale gradient using a 2D numpy array
+size = 50
+x = np.linspace(0, 1, size)
+X, Y = np.meshgrid(x, x)
+gradient = (X + Y) / 2 * 255  # Values from 0 to 255
+grayscale = bitmap(gradient.astype(np.uint8))
+
+# Example 3: Create a color pattern using a 3D numpy array
+rgb_pattern = np.zeros((50, 50, 3), dtype=np.uint8)
+rgb_pattern[:, :, 0] = X * 255  # Red increases horizontally
+rgb_pattern[:, :, 1] = Y * 255  # Green increases vertically
+rgb_pattern[:, :, 2] = ((1 - X) * Y) * 255  # Blue is a diagonal gradient
+color_bitmap = bitmap(rgb_pattern)
+
+(
+    Plot.md("""
+        # Bitmap Component Examples
+
+        The bitmap component can display pixel data in several formats:
+        1. 3D numpy arrays for RGB/RGBA data
+        2. 2D numpy arrays (automatically converted to grayscale)
+        3. 3D numpy arrays with shape (height, width, channels)
+    """)
+    | Plot.Grid(
+        ["div", red_square, Plot.md("2x2 red square from 3D array")],
+        ["div", grayscale, Plot.md("Grayscale gradient from 2D array")],
+        ["div", color_bitmap, Plot.md("RGB pattern from 3D array")],
+        cols=3,
+    )
+)
+# </example>
+# %%
 # </examples>
