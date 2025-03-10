@@ -1,3 +1,7 @@
+### [2025.3.9] - Mar 10, 2025
+
+- relax python version
+
 ### [2025.3.8] - Mar 10, 2025
 
 - add Plot.bitmap component
