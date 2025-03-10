@@ -13,6 +13,10 @@ interface BitmapProps {
     width: number;
     /** Height of the bitmap in pixels */
     height: number;
+    /** CSS styles to apply to the canvas element */
+    style?: React.CSSProperties;
+    /** How to interpolate pixels when scaling */
+    interpolation?: 'nearest' | 'bilinear';
 }
 
 /**
@@ -25,20 +29,28 @@ interface BitmapProps {
  * @param pixels - Raw pixel data as Uint8Array/Uint8ClampedArray
  * @param width - Width of the bitmap in pixels
  * @param height - Height of the bitmap in pixels
+ * @param interpolation - How to interpolate pixels when scaling
  * @returns React component rendering the bitmap
  */
-export function Bitmap({pixels, width, height}: BitmapProps) {
+export function Bitmap({pixels, width, height, interpolation = 'nearest', style, ...props}: BitmapProps) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const [ref, containerWidth] = useContainerWidth();
     const $state = useContext($StateContext);
     const done = useMemo(() => $state.beginUpdate("bitmap"), [])
 
     useEffect(() => {
+
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (!canvas) {
+            console.warn('Canvas ref not available');
+            return;
+        }
 
         const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        if (!ctx) {
+            console.warn('Could not get 2d context');
+            return;
+        }
 
         const bytesPerPixel = pixels.length / (width * height);
 
@@ -62,7 +74,7 @@ export function Bitmap({pixels, width, height}: BitmapProps) {
 
         ctx.putImageData(imageData, 0, 0);
         done();
-    }, [pixels, width, height]);
+    }, [pixels, width, height, interpolation]);
 
     return <div ref={ref}>
         <canvas
@@ -71,7 +83,10 @@ export function Bitmap({pixels, width, height}: BitmapProps) {
             height={height}
             style={{
                 width: containerWidth,
+                imageRendering: interpolation === 'nearest' ? 'pixelated' : 'auto',
+                ...style,
             }}
+            {...props}
         />
     </div>;
 }
