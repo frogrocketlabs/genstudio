@@ -1,8 +1,4 @@
-### [2025.3.7] - Mar 10, 2025
-
-- Plot.bitmap: reshape arrays
-
-### [2025.3.6] - Mar 10, 2025
+### [2025.3.8] - Mar 10, 2025
 
 - add Plot.bitmap component
 
