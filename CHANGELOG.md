@@ -1,3 +1,7 @@
+### [2025.3.5] - Mar 10, 2025
+
+- screenshots: keep http server open for full lifetime of chrome context
+
 ### [2025.3.4] - Mar 09, 2025
 
 - Add fill_mode ('Solid', 'MajorWireframe') to Ellipsoid, deprecate EllipsoidAxes
