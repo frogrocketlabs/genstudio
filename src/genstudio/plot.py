@@ -92,7 +92,6 @@ from genstudio.plot_defs import (
     initializer,
     interpolatorBarycentric,
     interpolatorRandomWalk,
-    legend,
     line,
     linearRegressionX,
     linearRegressionY,
@@ -1224,6 +1223,20 @@ def Import(
     return RequireItem(spec)
 
 
+def legend(plot, scale, options={}):
+    """Render a plot's legend as an independent layout item.
+
+    Args:
+        plot: The plot specification to create a legend for
+        scale: The scale to use for the legend
+        options: Additional options to pass to plot.legend
+
+    Returns:
+        A legend component that can be composed with other layout elements
+    """
+    return Hiccup([JSRef("LegendView"), {"spec": plot, "scale": scale, **options}])
+
+
 # Add this near the top of the file, after the imports
 __all__ = [
     # ## Interactivity
@@ -1390,7 +1403,6 @@ __all__ = [
     "frame",
     "hexagon",
     "hexgrid",
-    "legend",
     "linearRegressionX",
     "linearRegressionY",
     "raster",
