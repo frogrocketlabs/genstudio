@@ -15,12 +15,10 @@ import http.server
 import socketserver
 import sys
 import threading
-import tempfile
-from functools import partial
 from pathlib import Path
 from typing import Union
 
-DEBUG = False
+DEBUG_WINDOW = False
 
 
 def find_chrome():
@@ -83,6 +81,56 @@ def check_chrome_version(chrome_path):
         raise RuntimeError(f"Failed to determine Chrome version: {e}")
 
 
+# Start HTTP server first
+class DualDirectoryHandler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *args, chrome_context, **kwargs):
+        self._logged_paths = set()
+        self.chrome_context = chrome_context
+        super().__init__(*args, **kwargs)
+
+    def guess_type(self, path):
+        """Guess the type of a file based on its extension"""
+        ext = str(path).split(".")[-1].lower()
+        if ext == "html":
+            return "text/html"
+        elif ext == "js":
+            return "application/javascript"
+        elif ext == "css":
+            return "text/css"
+        return "text/plain"
+
+    def translate_path(self, path):
+        # First try served files
+        if path.lstrip("/") in self.chrome_context.files:
+            if self.chrome_context.debug and path not in self._logged_paths:
+                print(f"[chrome_devtools.py] Serving {path} from memory")
+                self._logged_paths.add(path)
+            return path
+        # Fall back to cwd
+        cwd_path = os.path.join(os.getcwd(), path.lstrip("/"))
+        if os.path.exists(cwd_path) and path not in self._logged_paths:
+            if self.chrome_context.debug:
+                print(f"[chrome_devtools.py] Serving {path} from cwd: {cwd_path}")
+                self._logged_paths.add(path)
+        return cwd_path
+
+    def do_GET(self):
+        path = self.path.lstrip("/")
+        if path in self.chrome_context.files:
+            content = self.chrome_context.files[path]
+            self.send_response(200)
+            self.send_header("Content-type", self.guess_type(path))
+            self.send_header("Content-Length", str(len(content.encode())))
+            self.end_headers()
+            self.wfile.write(content.encode())
+            return
+        return super().do_GET()
+
+    def log_message(self, format, *args):
+        # Suppress default logging
+        pass
+
+
 class ChromeContext:
     """Manages a Chrome instance and provides methods for content manipulation and screenshots"""
 
@@ -96,6 +144,10 @@ class ChromeContext:
         self.chrome_process = None
         self.ws = None
         self.cmd_id = 0
+        self.files = {}
+        self.httpd = None
+        self.server_thread = None
+        self.server_port = None
 
     def __enter__(self):
         self.start()
@@ -138,6 +190,23 @@ class ChromeContext:
             self.set_size()
             return  # Already started
 
+        self.httpd = socketserver.TCPServer(
+            ("localhost", 0),
+            lambda *args: DualDirectoryHandler(*args, chrome_context=self),
+        )
+        self.server_port = self.httpd.server_address[1]
+
+        if self.debug:
+            print(
+                f"[chrome_devtools.py] Starting HTTP server on port {self.server_port}"
+            )
+
+        self.server_thread = threading.Thread(
+            target=self.httpd.serve_forever, kwargs={"poll_interval": 0.1}
+        )
+        self.server_thread.daemon = True
+        self.server_thread.start()
+
         chrome_path = find_chrome()
         if self.debug:
             print(f"[chrome_devtools.py] Starting Chrome from: {chrome_path}")
@@ -153,7 +222,7 @@ class ChromeContext:
 
         # Determine appropriate headless flag
         headless_flag = ""
-        if not DEBUG:
+        if not DEBUG_WINDOW:
             headless_flag = "--headless=new" if supports_new_headless else "--headless"
 
         # Base Chrome flags
@@ -232,7 +301,7 @@ class ChromeContext:
             self.ws.close()
             self.ws = None
 
-        if self.chrome_process and not DEBUG:
+        if self.chrome_process and not DEBUG_WINDOW:
             self.chrome_process.terminate()
             try:
                 self.chrome_process.wait(timeout=5)
@@ -243,6 +312,17 @@ class ChromeContext:
                     )
                 self.chrome_process.kill()
             self.chrome_process = None
+
+        if self.httpd:
+            if self.debug:
+                print("[chrome_devtools.py] Shutting down HTTP server")
+            self.httpd.shutdown()
+            if self.server_thread:
+                self.server_thread.join()
+            self.httpd.server_close()
+            self.httpd = None
+            self.server_thread = None
+            self.server_port = None
 
     def _send_command(self, method, params=None):
         """Send a command to Chrome and wait for the response"""
@@ -275,53 +355,25 @@ class ChromeContext:
 
     def load_html(self, html, files=None):
         """Serve HTML content and optional files over localhost and load it in the page"""
-
         self.set_size()
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # Write files
-            file_path = os.path.join(tmp_dir, "index.html")
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(html)
+        # Update files dictionary
+        if files:
+            self.files.update(files)
+        self.files["index.html"] = html
 
-            if files:
-                for filename, content in files.items():
-                    file_path = os.path.join(tmp_dir, filename)
-                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(content)
+        # Navigate to page
+        url = f"http://localhost:{self.server_port}/index.html"
+        self._send_command("Page.navigate", {"url": url})
 
-            # Set up HTTP server
-            handler = partial(http.server.SimpleHTTPRequestHandler, directory=tmp_dir)
-            with socketserver.TCPServer(("localhost", 0), handler) as httpd:
-                port = httpd.server_address[1]
+        while True:
+            if not self.ws:
+                raise RuntimeError("[chrome_devtools.py] WebSocket connection lost")
+            response = json.loads(self.ws.recv())
+            if response.get("method") == "Page.loadEventFired":
                 if self.debug:
-                    print(
-                        f"[chrome_devtools.py] Serving content from temporary server on port {port}. {'Additional files: ' + ', '.join(files.keys()) if files else ''}"
-                    )
-                server_thread = threading.Thread(
-                    target=httpd.serve_forever, kwargs={"poll_interval": 0.1}
-                )
-                server_thread.daemon = True
-                server_thread.start()
-
-                # Navigate to page
-                url = f"http://localhost:{port}/index.html"
-                self._send_command("Page.navigate", {"url": url})
-
-                while True:
-                    if not self.ws:
-                        raise RuntimeError(
-                            "[chrome_devtools.py] WebSocket connection lost"
-                        )
-                    response = json.loads(self.ws.recv())
-                    if response.get("method") == "Page.loadEventFired":
-                        if self.debug:
-                            print("[chrome_devtools.py] Page load complete")
-                        break
-
-                httpd.shutdown()
-                server_thread.join()
+                    print("[chrome_devtools.py] Page load complete")
+                break
 
     def evaluate(self, expression, return_by_value=True, await_promise=False):
         """Evaluate JavaScript code in the page context
