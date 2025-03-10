@@ -92,3 +92,14 @@ plot.state.fps = "raf"
 plot.state.update(
     {"pixels": generate_pixels(500, 500, 60, linear=True), "width": 500, "height": 500}
 )
+
+
+# %% [markdown]
+# ## Plot.bitmap
+#
+# Instead of rendering pixels within an Observable Plot canvas, we can render them to an html canvas as a bitmap image.
+
+# %%
+
+
+Plot.bitmap(single_frame, width, height)

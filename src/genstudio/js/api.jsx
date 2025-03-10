@@ -14,6 +14,7 @@ const { useState, useEffect, useContext, useRef, useCallback } = React
 import Katex from "katex";
 import markdownItKatex from "./markdown-it-katex";
 import * as scene3d from "./scene3d/scene3d"
+import {bitmap} from './components/bitmap'
 
 export const CONTAINER_PADDING = 10;
 const KATEX_CSS_URL = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
@@ -316,7 +317,7 @@ export function repeat(data) {
     return (_, i) => data[i % length]
 
 }
-export { d3, MarkSpec, Plot, PlotSpec, React, ReactDOM, Row, Column, Grid, render, scene3d };
+export { d3, MarkSpec, Plot, PlotSpec, React, ReactDOM, Row, Column, Grid, render, scene3d, bitmap };
 
 function renderArray($state, value) {
     const [element, ...args] = value

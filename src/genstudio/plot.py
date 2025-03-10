@@ -1,27 +1,28 @@
 # %%
 # ruff: noqa: F401
 import json
-from typing import Any, Dict, List, Union, Optional
-
 import pathlib
+from typing import Any, Dict, List, Optional, Union
+
+import numpy as np
 
 import genstudio.plot_defs as plot_defs
+from genstudio.env import configure
 from genstudio.layout import (
     Column,
-    onChange,
-    Ref,
     Grid,
     Hiccup,
     JSCall,
     JSCode,
     JSExpr,
     JSRef,
-    Row,
-    ref,
-    js,
     LayoutItem,
+    Ref,
+    Row,
+    js,
+    onChange,
+    ref,
 )
-
 from genstudio.plot_defs import (
     area,
     areaX,
@@ -160,7 +161,6 @@ from genstudio.plot_defs import (
     windowY,
 )
 from genstudio.plot_spec import MarkSpec, PlotSpec, new
-from genstudio.env import configure
 
 # This module provides a composable way to create interactive plots using Observable Plot
 # and AnyWidget, built on the work of pyobsplot.
@@ -1221,6 +1221,31 @@ def Import(
             return None
 
     return RequireItem(spec)
+
+
+def bitmap(
+    pixels: Union[list, np.ndarray, JSExpr], width: int, height: int
+) -> LayoutItem:
+    """
+    Renders raw pixel data from an array.
+
+    Args:
+        pixels: Raw pixel data in RGB or RGBA format. For RGB, each pixel should be 3 bytes.
+               For RGBA, each pixel should be 4 bytes.
+        width: Width of the image in pixels
+        height: Height of the image in pixels
+
+    Returns:
+        A PlotSpec object representing the bitmap mark.
+
+    Example:
+        >>> # Create 2x2 red square
+        >>> pixels = bytes([255,0,0] * 4) # RGB format
+        >>> bitmap(pixels, width=2, height=2)
+    """
+    return Hiccup(
+        [JSRef("Bitmap"), {"pixels": pixels, "width": width, "height": height}]
+    )
 
 
 # Add this near the top of the file, after the imports
