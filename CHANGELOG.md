@@ -1,3 +1,7 @@
+### [2025.3.6] - Mar 10, 2025
+
+- add Plot.bitmap component
+
 ### [2025.3.5] - Mar 10, 2025
 
 - screenshots: keep http server open for full lifetime of chrome context
