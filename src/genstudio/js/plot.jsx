@@ -202,7 +202,7 @@ export function PlotWrapper({spec}) {
     const $state = React.useContext($StateContext)
     return <PlotView spec={spec} $state={$state} />
 }
-export function PlotView ({ spec, $state, wrapPlot }) {
+export function PlotView ({ spec, $state }) {
         const [ref, containerWidth] = useContainerWidth()
         const done = useMemo(() => $state.beginUpdate("plot/PlotWrapper"), [])
         useEffect(() => {
@@ -220,8 +220,8 @@ export function PlotView ({ spec, $state, wrapPlot }) {
                     if (spec.className) {
                         plot.setAttribute('class', tw(spec.className));
                     }
-                    if (wrapPlot) {
-                        plot = wrapPlot(plot);
+                    if (spec.onPlotCreate) {
+                        spec.onPlotCreate(plot);
                     }
                     parent.appendChild(plot);
                     done();
@@ -230,13 +230,3 @@ export function PlotView ({ spec, $state, wrapPlot }) {
         }, [spec, containerWidth])
         return <div className={tw(`relative`)} style={spec.width && {width: spec.width}} ref={ref}></div>
     }
-
-export function LegendView({spec, scale, ...options}) {
-    const $state = React.useContext($StateContext)
-    const wrapPlot = (plot) => {
-        const legend = plot.legend(scale, options);
-        legend.style.marginBottom = "0";
-        return legend;
-    };
-    return <PlotView spec={spec.spec} $state={$state} wrapPlot={wrapPlot} />
-}

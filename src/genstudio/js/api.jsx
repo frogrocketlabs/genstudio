@@ -1,5 +1,5 @@
 import { $StateContext, AUTOGRID_MIN as AUTOGRID_MIN_WIDTH } from "./context";
-import { MarkSpec, PlotSpec, LegendView } from "./plot";
+import { MarkSpec, PlotSpec } from "./plot";
 import * as Plot from "@observablehq/plot";
 import bylight from "bylight";
 import * as d3 from "d3";
@@ -317,7 +317,7 @@ export function repeat(data) {
     return (_, i) => data[i % length]
 
 }
-export { d3, MarkSpec, Plot, PlotSpec, React, ReactDOM, Row, Column, Grid, render, scene3d, Bitmap, LegendView };
+export { d3, MarkSpec, Plot, PlotSpec, React, ReactDOM, Row, Column, Grid, render, scene3d, Bitmap };
 
 function renderArray($state, value) {
     const [element, ...args] = value

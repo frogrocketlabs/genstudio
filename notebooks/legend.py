@@ -12,14 +12,14 @@ fps_plot = (
         [[x, y] for x, y in zip(x, np.cos(x + 0.5))],
         stroke=Plot.constantly("FoundationPose"),
     )
-    + Plot.colorLegend()
     + {
         "x": {"label": "Frames per second"},
         "y": {"label": "Gaussian count"},
         "height": 160,
+        "onPlotCreate": Plot.js(
+            "(plot) => $state.update({'legend': plot.legend('color')})"
+        ),
     }
 )
 
-fps_plot
-
-Plot.legend(fps_plot, "color")
+(fps_plot | ["div.flex.justify-center", Plot.js("$state.legend")])
