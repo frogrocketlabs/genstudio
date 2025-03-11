@@ -22,4 +22,6 @@ fps_plot = (
     }
 )
 
-(fps_plot | ["div.flex.justify-center", Plot.js("$state.legend")])
+(legend_example := (fps_plot | ["div.flex.justify-center", Plot.js("$state.legend")]))
+
+# legend_example.save_pdf('./scratch/legend.pdf')
