@@ -161,15 +161,16 @@ class ChromeContext:
         self.height = height or self.height or self.width
         if scale:
             self.scale = scale
-        self._send_command(
-            "Browser.setWindowBounds",
-            {
-                "windowId": self._send_command("Browser.getWindowForTarget")[
-                    "windowId"
-                ],
-                "bounds": {"width": self.width, "height": self.height},
-            },
-        )
+        if DEBUG_WINDOW:
+            self._send_command(
+                "Browser.setWindowBounds",
+                {
+                    "windowId": self._send_command("Browser.getWindowForTarget")[
+                        "windowId"
+                    ],
+                    "bounds": {"width": self.width, "height": self.height},
+                },
+            )
         self._send_command(
             "Page.setDeviceMetricsOverride",
             {

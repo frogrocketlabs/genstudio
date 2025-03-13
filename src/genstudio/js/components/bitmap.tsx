@@ -33,18 +33,29 @@ interface BitmapProps {
  * @returns React component rendering the bitmap
  */
 export function Bitmap({pixels, width, height, interpolation = 'nearest', style, ...props}: BitmapProps) {
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const [ref, containerWidth] = useContainerWidth();
     const $state = useContext($StateContext);
-    const done = useMemo(() => $state.beginUpdate("bitmap"), [])
+    const done = useMemo(() => $state.beginUpdate("bitmap"), [containerWidth])
 
     useEffect(() => {
-
-        const canvas = canvasRef.current;
-        if (!canvas) {
-            console.warn('Canvas ref not available');
+        const container = ref.current;
+        if (!container) {
+            console.warn('Container ref not available');
             return;
         }
+
+        // Remove any existing canvas elements
+        while (container.firstChild) {
+            container.removeChild(container.firstChild);
+        }
+
+        // Create new canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.style.width = `${containerWidth}px`;
+        canvas.style.imageRendering = interpolation === 'nearest' ? 'pixelated' : 'auto';
+        Object.assign(canvas.style, style);
 
         const ctx = canvas.getContext('2d');
         if (!ctx) {
@@ -73,20 +84,10 @@ export function Bitmap({pixels, width, height, interpolation = 'nearest', style,
         }
 
         ctx.putImageData(imageData, 0, 0);
+        container.appendChild(canvas);
         done();
-    }, [pixels, width, height, interpolation]);
 
-    return <div ref={ref}>
-        <canvas
-            ref={canvasRef}
-            width={width}
-            height={height}
-            style={{
-                width: containerWidth,
-                imageRendering: interpolation === 'nearest' ? 'pixelated' : 'auto',
-                ...style,
-            }}
-            {...props}
-        />
-    </div>;
+    }, [pixels, width, height, interpolation, containerWidth, style, ref]);
+
+    return <div ref={ref} {...props} />;
 }
