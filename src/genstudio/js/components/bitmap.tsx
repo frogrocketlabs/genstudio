@@ -51,22 +51,68 @@ export function Bitmap({pixels, width, height, interpolation = 'nearest', style,
 
         // Create new canvas
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        canvas.style.width = `${containerWidth}px`;
-        canvas.style.imageRendering = interpolation === 'nearest' ? 'pixelated' : 'auto';
-        Object.assign(canvas.style, style);
+        const displayWidth = containerWidth;
+        const displayHeight = Math.round(displayWidth * (height / width));
 
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-            console.warn('Could not get 2d context');
-            return;
+        if (interpolation === 'nearest' && containerWidth > (width * 2)) {
+            // For nearest-neighbor, use high resolution canvas with temp canvas approach
+            const scale = 2; // Use 4x resolution for crisp pixels
+            canvas.width = displayWidth * scale;
+            canvas.height = displayHeight * scale;
+            canvas.style.width = `${displayWidth}px`;
+            canvas.style.height = `${displayHeight}px`;
+
+            // Create temporary canvas for initial pixel data
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tempCtx = tempCanvas.getContext('2d');
+            if (!tempCtx) {
+                console.warn('Could not get temp 2d context');
+                return;
+            }
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                console.warn('Could not get 2d context');
+                return;
+            }
+
+            // Put pixels in temp canvas first
+            const imageData = createImageData(pixels, width, height);
+            tempCtx.putImageData(imageData, 0, 0);
+
+            // Scale to final size with nearest neighbor interpolation
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
+        } else {
+            // For bilinear, render at original pixel dimensions and let browser handle scaling
+            canvas.width = width;
+            canvas.height = height;
+            canvas.style.width = `${displayWidth}px`;
+            canvas.style.height = `${displayHeight}px`;
+            canvas.style.imageRendering = interpolation === 'nearest' ? 'pixelated' : 'auto';
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                console.warn('Could not get 2d context');
+                return;
+            }
+
+            // Draw pixels directly at original resolution
+            const imageData = createImageData(pixels, width, height);
+            ctx.putImageData(imageData, 0, 0);
         }
 
-        const bytesPerPixel = pixels.length / (width * height);
+        Object.assign(canvas.style, style);
+        container.appendChild(canvas);
+        done();
 
-        // Create ImageData based on pixel format
-        let imageData: ImageData;
+    }, [pixels, width, height, interpolation, containerWidth, ref]);
+
+    // Helper function to create appropriate ImageData from pixels
+    function createImageData(pixels: Uint8Array | Uint8ClampedArray, width: number, height: number): ImageData {
+        const bytesPerPixel = pixels.length / (width * height);
         if (bytesPerPixel === 3) {
             // Convert RGB to RGBA
             const rgba = new Uint8ClampedArray(width * height * 4);
@@ -77,17 +123,12 @@ export function Bitmap({pixels, width, height, interpolation = 'nearest', style,
                 rgba[j + 2] = pixels[i + 2];
                 rgba[j + 3] = 255;
             }
-            imageData = new ImageData(rgba, width, height);
+            return new ImageData(rgba, width, height);
         } else {
             // Assume RGBA
-            imageData = new ImageData(new Uint8ClampedArray(pixels), width, height);
+            return new ImageData(new Uint8ClampedArray(pixels), width, height);
         }
-
-        ctx.putImageData(imageData, 0, 0);
-        container.appendChild(canvas);
-        done();
-
-    }, [pixels, width, height, interpolation, containerWidth, style, ref]);
+    }
 
     return <div ref={ref} {...props} />;
 }
