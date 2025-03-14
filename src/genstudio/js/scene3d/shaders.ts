@@ -249,47 +249,122 @@ fn vs_main(
   @location(2) position: vec3<f32>,
   @location(3) size: vec3<f32>,
   @location(4) quaternion: vec4<f32>,
-  @location(5) color: vec3<f32>,
+  @location(5) inColor: vec3<f32>,  // We'll override for debug
   @location(6) alpha: f32
-)-> VSOut {
-
+) -> VSOut {
   let ringIndex = i32(instID % 3u);
-  var lp = localPos;
 
-  // Rotate the ring geometry differently for x-y-z rings
-  if(ringIndex == 0) {
-    let tmp = lp.z;
-    lp.z = -lp.y;
-    lp.y = tmp;
-  } else if(ringIndex == 1) {
-    let px = lp.x;
-    lp.x = -lp.y;
-    lp.y = px;
-    let pz = lp.z;
-    lp.z = lp.x;
-    lp.x = pz;
+  // 1) Rotate the local position into the ring's plane
+  //    so ringIndex=0 => XY plane, ringIndex=1 => XZ, ringIndex=2 => YZ
+  var lp = localPos;
+  if (ringIndex == 1) {
+    // Rotate 90° around X => (x, y, z) -> (x, -z, y)
+    let temp = lp.y;
+    lp.y = -lp.z;
+    lp.z = temp;
+  } else if (ringIndex == 2) {
+    // Rotate 90° around Y => (x, y, z) -> (z, y, -x)
+    let temp = lp.x;
+    lp.x = lp.z;
+    lp.z = -temp;
   }
 
-  // Scale the local position
-  lp *= size;
+  // 2) Split lp into "in‐plane" vs. "out‐of‐plane (thickness)" components
+  //    so we can scale them differently.
+  var inPlane = vec2<f32>(0.0, 0.0);
+  var thickness = 0.0;
 
-  // Apply quaternion rotation
+  if (ringIndex == 0) {
+    // XY plane => (x, y) is the plane, z is thickness
+    inPlane = vec2<f32>(lp.x, lp.y);
+    thickness = lp.z;
+  } else if (ringIndex == 1) {
+    // XZ plane => (x, z) is the plane, y is thickness
+    inPlane = vec2<f32>(lp.x, lp.z);
+    thickness = lp.y;
+  } else {
+    // YZ plane => (y, z) is the plane, x is thickness
+    inPlane = vec2<f32>(lp.y, lp.z);
+    thickness = lp.x;
+  }
+
+  // 3) Apply elliptical scaling to the plane, uniform scaling to thickness
+  //    so the ring's cross‐section remains circular.
+  var scaledInPlane = inPlane;
+  var scaledThickness = thickness;
+
+  // Calculate a single uniform gauge size as the geometric mean of all dimensions
+  // with a minimum size to prevent rings from becoming too thin
+  let minGaugeSize = 0.15;
+  let gaugeSize = max(minGaugeSize, pow(size.x * size.y * size.z, 1.0/3.0));
+
+  if (ringIndex == 0) {
+    // XY plane => elliptical scale by (size.x, size.y)
+    scaledInPlane.x *= size.x;
+    scaledInPlane.y *= size.y;
+    scaledThickness *= gaugeSize;
+  } else if (ringIndex == 1) {
+    // XZ plane => elliptical scale by (size.x, size.z)
+    scaledInPlane.x *= size.x;
+    scaledInPlane.y *= size.z;
+    scaledThickness *= gaugeSize;
+  } else {
+    // YZ plane => elliptical scale by (size.y, size.z)
+    scaledInPlane.x *= size.y;
+    scaledInPlane.y *= size.z;
+    scaledThickness *= gaugeSize;
+  }
+
+  // 4) Reassemble lp back into 3D after scaling
+  if (ringIndex == 0) {
+    // XY plane => z is thickness
+    lp = vec3<f32>(scaledInPlane.x, scaledInPlane.y, scaledThickness);
+  } else if (ringIndex == 1) {
+    // XZ plane => y is thickness
+    lp = vec3<f32>(scaledInPlane.x, scaledThickness, scaledInPlane.y);
+  } else {
+    // YZ plane => x is thickness
+    lp = vec3<f32>(scaledThickness, scaledInPlane.x, scaledInPlane.y);
+  }
+
+  // 5) Finally, apply your quaternion rotation + translation
   let rotatedPos = quat_rotate(quaternion, lp);
+  let worldPos   = position + rotatedPos;
 
-  // Apply translation
-  let worldPos = position + rotatedPos;
+  // 6) For the normal: rotate into the plane the same way, then apply quaternion.
+  //    (Non-uniform scaling usually requires a more advanced transform, but this
+  //     is sufficient if you just need approximate normals for a thin ring.)
+  var n = normal;
+  if (ringIndex == 1) {
+    let temp = n.y;
+    n.y = -n.z;
+    n.z = temp;
+  } else if (ringIndex == 2) {
+    let temp = n.x;
+    n.x = n.z;
+    n.z = -temp;
+  }
+  let rotatedNorm = quat_rotate(quaternion, n);
 
-  // Also rotate the normal
-  let rotatedNorm = quat_rotate(quaternion, normal);
-
+  // 7) Output
   var out: VSOut;
-  out.position = camera.mvp * vec4<f32>(worldPos, 1.0);
-  out.color = color;
-  out.alpha = alpha;
   out.worldPos = worldPos;
-  out.normal = rotatedNorm;
+  out.normal   = rotatedNorm;
+  out.position = camera.mvp * vec4<f32>(worldPos, 1.0);
+  out.alpha    = alpha;
+
+  // For debugging: color each ring differently by ringIndex
+  // if (ringIndex == 0) {
+  //   out.color = vec3<f32>(1.0, 0.0, 0.0); // Red => XY
+  // } else if (ringIndex == 1) {
+  //   out.color = vec3<f32>(0.0, 1.0, 0.0); // Green => XZ
+  // } else {
+  //   out.color = vec3<f32>(0.0, 0.0, 1.0); // Blue => YZ
+  // }
+  out.color = inColor;
   return out;
-}`;
+}
+`;
 
 export const ringFragCode = /*wgsl*/`
 ${cameraStruct}
