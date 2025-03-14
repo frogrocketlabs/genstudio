@@ -1273,8 +1273,16 @@ export function SceneInner({
     /** Whether shift key was held when drag started */
     isShiftDown?: boolean;
 
+    /** Whether ctrl key was held when drag started */
+    isCtrlDown?: boolean;
+
+    /** Whether alt key was held when drag started */
+    isAltDown?: boolean;
+
     /** Accumulated drag distance in pixels */
     dragDistance?: number;
+    /** Initial camera state when drag started */
+    startCam?: CameraState
   }
   const mouseState=useRef<MouseState>({type:'idle'});
 
@@ -1321,7 +1329,10 @@ export function SceneInner({
       lastX: e.clientX,
       lastY: e.clientY,
       isShiftDown: e.shiftKey,
-      dragDistance: 0
+      isCtrlDown: e.ctrlKey,
+      isAltDown: e.altKey,
+      dragDistance: 0,
+      startCam: activeCamera
     };
     e.preventDefault();
   }, []);
