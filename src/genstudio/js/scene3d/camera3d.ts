@@ -175,7 +175,7 @@ export function pan(camera: CameraState, deltaX: number, deltaY: number): Camera
  */
 export function zoom(camera: CameraState, deltaY: number): CameraState {
     // Exponential zoom factor
-    const newRadius = Math.max(0.1, camera.radius * Math.exp(deltaY * 0.001));
+    const newRadius = Math.max(0.01, camera.radius * Math.exp(deltaY * 0.001));
 
     // Move the camera position accordingly
     const direction = glMatrix.vec3.sub(glMatrix.vec3.create(), camera.position, camera.target);
