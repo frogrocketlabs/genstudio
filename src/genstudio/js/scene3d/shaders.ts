@@ -293,6 +293,10 @@ fn vs_main(
 }`;
 
 export const ringFragCode = /*wgsl*/`
+${cameraStruct}
+${lightingConstants}
+${lightingCalc}
+
 @fragment
 fn fs_main(
   @location(0) color: vec3<f32>,
@@ -300,8 +304,8 @@ fn fs_main(
   @location(2) worldPos: vec3<f32>,
   @location(3) normal: vec3<f32>
 )-> @location(0) vec4<f32> {
-  // simple color (no shading)
-  return vec4<f32>(color, alpha);
+  let litColor = calculateLighting(color, normal, worldPos);
+  return vec4<f32>(litColor, alpha);
 }`;
 
 export const cuboidVertCode = /*wgsl*/`

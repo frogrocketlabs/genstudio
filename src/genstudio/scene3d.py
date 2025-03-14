@@ -296,7 +296,8 @@ def Ellipsoid(
         data["alphas"] = flatten_array(alphas, dtype=np.float32)
     elif alpha is not None:
         data["alpha"] = alpha
-    elif fill_mode is not None:
+
+    if fill_mode is not None:
         data["fill_mode"] = fill_mode
 
     return SceneComponent("Ellipsoid", data, **kwargs)
