@@ -56,44 +56,28 @@ import {
 /** Helper function to apply decorations to an array of instances */
 function applyDecorations(
   decorations: Decoration[] | undefined,
-  instanceCount: number,
-  setter: (i: number, dec: Decoration) => void
+  setter: (i: number, dec: Decoration) => void,
+  sortedIndices?: Uint32Array,
+  instancesPerElement: number = 1
 ) {
   if (!decorations) return;
+
+  const isSorted = !!sortedIndices;
+
   for (const dec of decorations) {
     if (!dec.indexes) continue;
-    for (const idx of dec.indexes) {
-      if (idx < 0 || idx >= instanceCount) continue;
-      setter(idx, dec);
+
+    for (const elemIdx of dec.indexes) {
+      if (elemIdx < 0) continue;
+
+      // Apply decoration to all instances of this element
+      for (let instOffset = 0; instOffset < instancesPerElement; instOffset++) {
+        const instanceIdx = elemIdx * instancesPerElement + instOffset;
+        const outIndex = isSorted ? sortedIndices[instanceIdx] : instanceIdx;
+        setter(outIndex, dec);
+      }
     }
   }
-}
-
-/** Helper function to handle sorted indices and position mapping */
-function getIndicesAndMapping(
-  count: number,
-  sortedIndices?: Uint32Array
-): {
-  indices: Uint32Array | null; // Change to Uint32Array
-  indexToPosition: Uint32Array | null;
-} {
-  if (!sortedIndices) {
-    return {
-      indices: null,
-      indexToPosition: null,
-    };
-  }
-
-  // Only create mapping if we have sorted indices
-  const indexToPosition = new Uint32Array(count);
-  for (let j = 0; j < count; j++) {
-    indexToPosition[sortedIndices[j]] = j;
-  }
-
-  return {
-    indices: sortedIndices,
-    indexToPosition,
-  };
 }
 
 
@@ -104,23 +88,36 @@ function acopy(source: ArrayLike<number>, sourceI: number, out: ArrayLike<number
 }
 
 /** ===================== MINI-FRAMEWORK FOR RENDER/PICK DATA ===================== **/
+/** Helper function to fill color from constants or element array */
+function fillColor(spec: PrimitiveSpec<any>, constants: ElementConstants, elem: BaseComponentConfig, elemIndex: number, out: Float32Array, outOffset: number) {
+  if (constants.color) {
+    acopy(constants.color, 0, out, outOffset + spec.colorOffset, 3);
+  } else {
+    acopy(elem.colors!, elemIndex * 3, out, outOffset + spec.colorOffset, 3);
+  }
+}
 
-function applyDefaultDecoration(
-  out: Float32Array,
-  offset: number,
+/** Helper function to fill alpha from constants or element array */
+function fillAlpha(spec: PrimitiveSpec<any>, constants: ElementConstants, elem: BaseComponentConfig, elemIndex: number, out: Float32Array, outOffset: number) {
+  out[outOffset + spec.alphaOffset] = constants.alpha || elem.alphas![elemIndex];
+}
+
+function applyDecoration(
+  spec: PrimitiveSpec<any>,
   dec: Decoration,
-  spec: PrimitiveSpec<any>
+  out: Float32Array,
+  outOffset: number,
 ) {
   if (dec.color) {
-    out[offset + spec.colorOffset + 0] = dec.color[0];
-    out[offset + spec.colorOffset + 1] = dec.color[1];
-    out[offset + spec.colorOffset + 2] = dec.color[2];
+    out[outOffset + spec.colorOffset + 0] = dec.color[0];
+    out[outOffset + spec.colorOffset + 1] = dec.color[1];
+    out[outOffset + spec.colorOffset + 2] = dec.color[2];
   }
   if (dec.alpha !== undefined) {
-    out[offset + spec.alphaOffset] = dec.alpha;
+    out[outOffset + spec.alphaOffset] = dec.alpha;
   }
   if (dec.scale !== undefined) {
-    spec.applyDecorationScale(out, offset, dec.scale);
+    spec.applyDecorationScale(out, outOffset, dec.scale);
   }
 }
 
@@ -135,48 +132,42 @@ export function buildRenderData<ConfigType extends BaseComponentConfig>(
   out: Float32Array,
   sortedIndices?: Uint32Array
 ): boolean {
-  const count = spec.getCount(elem);
-  if (count === 0) return false;
+  // Get element count and instance count
+  const elementCount = spec.getElementCount(elem);
+  const instancesPerElement = spec.instancesPerElement || 1;
+  const instanceCount = elementCount * instancesPerElement;
 
-  // Retrieve base defaults (color, alpha)
+  if (instanceCount === 0) return false;
+
   const constants = getElementConstants(spec, elem);
 
-  const { indices, indexToPosition } = getIndicesAndMapping(
-    count,
-    sortedIndices
-  );
-  const floatsPerInstance = spec.getFloatsPerInstance();
-
-  for (let j = 0; j < count; j++) {
-    const i = indices ? indices[j] : j;
-    const offset = j * floatsPerInstance;
-
-    // Let the shape fill the geometry portion (positions, sizes, quaternions, etc.)
-    spec.fillRenderGeometry(elem, i, out, offset);
-
-    // Color / alpha usage is handled here
-    const colorIndex = spec.getColorIndexForInstance
-      ? spec.getColorIndexForInstance(elem, i)
-      : i;
-    if (constants.color) {
-      acopy(constants.color, 0, out, offset + spec.colorOffset, 3);
-    } else {
-      acopy(elem.colors!, colorIndex * 3, out, offset + spec.colorOffset, 3);
+  if (instancesPerElement === 1) {
+    for (let elemIndex = 0; elemIndex < elementCount; elemIndex++) {
+      const outIndex = sortedIndices ? sortedIndices[elemIndex] : elemIndex;
+      spec.fillRenderGeometry(constants, elem, elemIndex, out, outIndex);
     }
-    out[offset + spec.alphaOffset] = constants.alpha || elem.alphas![colorIndex];
+  } else {
+    // For each element
+    for (let elemIndex = 0; elemIndex < elementCount; elemIndex++) {
+      // For each instance of this element
+      for (let instOffset = 0; instOffset < instancesPerElement; instOffset++) {
+        const instanceIndex = elemIndex * instancesPerElement + instOffset;
+        if (instanceIndex >= instanceCount) break; // Safety check
+
+        const outIndex = sortedIndices ? sortedIndices[instanceIndex] : instanceIndex;
+        spec.fillRenderGeometry(constants, elem, elemIndex, out, outIndex);
+      }
+    }
   }
 
-  applyDecorations(elem.decorations, count, (idx, dec) => {
-    const j = indexToPosition ? indexToPosition[idx] : idx;
-    if (j < 0 || j >= count) return;
-
+  applyDecorations(elem.decorations, (outIndex, dec) => {
     if (spec.applyDecoration) {
       // Use component-specific decoration handling
-      spec.applyDecoration(out, j, dec, floatsPerInstance);
+      spec.applyDecoration(dec, out, outIndex, spec.floatsPerInstance);
     } else {
-      applyDefaultDecoration(out, j * floatsPerInstance, dec, spec);
+      applyDecoration(spec, dec, out, outIndex * spec.floatsPerInstance);
     }
-  });
+  }, sortedIndices, instancesPerElement);
 
   return true;
 }
@@ -192,35 +183,43 @@ export function buildPickingData<ConfigType extends BaseComponentConfig>(
   baseID: number,
   sortedIndices?: Uint32Array
 ): void {
-  const count = spec.getCount(elem);
-  if (count === 0) return;
+  // Get element count and instance count
+  const elementCount = spec.getElementCount(elem);
+  const instancesPerElement = spec.instancesPerElement || 1;
+  const instanceCount = elementCount * instancesPerElement;
 
-  const { indices, indexToPosition } = getIndicesAndMapping(
-    count,
-    sortedIndices
-  );
-  const floatsPerPicking = spec.getFloatsPerPicking();
+  if (instanceCount === 0) return;
 
-  // Do the main fill
-  for (let j = 0; j < count; j++) {
-    const i = indices ? indices[j] : j;
-    const offset = j * floatsPerPicking;
-    // Let the shape fill the picking geometry (positions, orientation, pickID)
-    spec.fillPickingGeometry(elem, i, out, offset, baseID); // scale=1.0 initially
+  const constants = getElementConstants(spec, elem);
+
+  if (instancesPerElement === 1) {
+    // Fast path for single instance per element
+    for (let elemIndex = 0; elemIndex < elementCount; elemIndex++) {
+      const outIndex = sortedIndices ? sortedIndices[elemIndex] : elemIndex;
+      spec.fillPickingGeometry(constants, elem, elemIndex, out, outIndex, baseID);
+    }
+  } else {
+    // For each element
+    for (let elemIndex = 0; elemIndex < elementCount; elemIndex++) {
+      // For each instance of this element
+      for (let instOffset = 0; instOffset < instancesPerElement; instOffset++) {
+        const instanceIndex = elemIndex * instancesPerElement + instOffset;
+        if (instanceIndex >= instanceCount) break; // Safety check
+
+        const outIndex = sortedIndices ? sortedIndices[instanceIndex] : instanceIndex;
+        spec.fillPickingGeometry(constants, elem, elemIndex, out, outIndex, baseID);
+      }
+    }
   }
 
-  // Then apply decorations that affect scale
-  applyDecorations(elem.decorations, count, (idx, dec) => {
-    if (dec.scale === undefined || !spec.applyDecorationScale) return;
-    const j = indexToPosition ? indexToPosition[idx] : idx;
-    if (j < 0 || j >= count) return;
-
-    if (spec.applyDecoration) {
-      spec.applyDecoration(out, j, dec, floatsPerPicking);
-    } else {
-      spec.applyDecorationScale(out, j * floatsPerPicking, dec.scale);
+  // Apply decorations that affect scale
+  applyDecorations(elem.decorations, (outIndex, dec) => {
+    if (dec.scale !== undefined && dec.scale !== 1.0) {
+      if (spec.applyDecorationScale) {
+        spec.applyDecorationScale(out, outIndex * spec.floatsPerPicking, dec.scale);
+      }
     }
-  });
+  }, sortedIndices, instancesPerElement);
 }
 
 /** ===================== GPU PIPELINE HELPERS (unchanged) ===================== **/
@@ -428,17 +427,13 @@ export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
     size: 0.02,
   },
 
-  getCount(elem) {
+  getElementCount(elem) {
     return elem.centers.length / 3;
   },
 
-  getFloatsPerInstance() {
-    return 8; // position(3) + size(1) + color(3) + alpha(1) = 8
-  },
+  floatsPerInstance: 8, // position(3) + size(1) + color(3) + alpha(1) = 8
 
-  getFloatsPerPicking() {
-    return 5; // position(3) + size(1) + pickID(1) = 5
-  },
+  floatsPerPicking: 5, // position(3) + size(1) + pickID(1) = 5
 
   getCenters(elem) {
     return elem.centers;
@@ -449,43 +444,34 @@ export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
   alphaOffset: 7, // alpha is at out[offset+7]
 
   // fillRenderGeometry: shape-specific code, ignoring color/alpha
-  fillRenderGeometry(elem, i, out, offset) {
-    const constants = getElementConstants(this, elem);
+  fillRenderGeometry(constants, elem, i, out, outIndex) {
+    const outOffset = outIndex * this.floatsPerInstance;
 
     // Position
-    acopy(elem.centers, i * 3, out, offset, 3);
-
+    acopy(elem.centers, i * 3, out, outOffset, 3);
     // Size - use constant or per-instance value
-    out[offset + 3] = constants.size || elem.sizes![i];
+    out[outOffset + 3] = constants.size || elem.sizes![i];
 
-    // Color - use constant or per-instance value
-    if (constants.color) {
-      acopy(constants.color, 0, out, offset + 4, 3);
-    } else {
-      acopy(elem.colors!, i * 3, out, offset + 4, 3);
-    }
-
-    // Alpha - use constant or per-instance value
-    out[offset + 7] = constants.alpha ?? elem.alphas![i];
+    fillColor(this, constants, elem, i, out, outOffset)
+    fillAlpha(this, constants, elem, i, out, outOffset)
   },
 
-  // For decorations that scale the point size
   applyDecorationScale(out, offset, scaleFactor) {
     out[offset + 3] *= scaleFactor;
   },
 
   // fillPickingGeometry
-  fillPickingGeometry(elem, i, out, offset, baseID) {
-    out[offset + 0] = elem.centers[i * 3 + 0];
-    out[offset + 1] = elem.centers[i * 3 + 1];
-    out[offset + 2] = elem.centers[i * 3 + 2];
+  fillPickingGeometry(constants, elem, elemIndex, out, outIndex, baseID) {
+    const outOffset = outIndex * this.floatsPerPicking;
+    out[outOffset + 0] = elem.centers[elemIndex * 3 + 0];
+    out[outOffset + 1] = elem.centers[elemIndex * 3 + 1];
+    out[outOffset + 2] = elem.centers[elemIndex * 3 + 2];
 
-    const constants = getElementConstants(this, elem);
-    const pointSize = constants.size || elem.sizes![i];
-    out[offset + 3] = pointSize;
+    const pointSize = constants.size || elem.sizes![elemIndex];
+    out[outOffset + 3] = pointSize;
 
     // pickID
-    out[offset + 4] = packID(baseID + i);
+    out[outOffset + 4] = packID(baseID + elemIndex);
   },
   // Rendering configuration
   renderConfig: {
@@ -564,8 +550,12 @@ export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
   createGeometryResource(device) {
     return createBuffers(device, {
       vertexData: new Float32Array([
-        -0.5, -0.5, 0.0, 0.0, 0.0, 1.0, 0.5, -0.5, 0.0, 0.0, 0.0, 1.0, -0.5,
-        0.5, 0.0, 0.0, 0.0, 1.0, 0.5, 0.5, 0.0, 0.0, 0.0, 1.0,
+        // Position (x,y,z) and Normal (nx,ny,nz) for each vertex
+        -0.5, -0.5, 0.0,  0.0, 0.0, 1.0,  // Bottom-left
+         0.5, -0.5, 0.0,  0.0, 0.0, 1.0,  // Bottom-right
+        -0.5,  0.5, 0.0,  0.0, 0.0, 1.0,  // Top-left
+         0.5,  0.5, 0.0,  0.0, 0.0, 1.0,  // Top-right
+
       ]),
       indexData: new Uint16Array([0, 1, 2, 2, 1, 3]),
     });
@@ -592,47 +582,49 @@ export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
     quaternion: [0, 0, 0, 1],
   },
 
-  getCount(elem) {
+  getElementCount(elem) {
     return elem.centers.length / 3;
   },
 
-  getFloatsPerInstance() {
-    // pos(3) + size(3) + quat(4) + color(3) + alpha(1) = 14
-    return 14;
-  },
+  floatsPerInstance: 14, // pos(3) + size(3) + quat(4) + color(3) + alpha(1) = 14
 
-  getFloatsPerPicking() {
-    // pos(3) + size(3) + quat(4) + pickID(1) = 11
-    return 11;
-  },
+  floatsPerPicking: 11, // pos(3) + size(3) + quat(4) + pickID(1) = 11
 
   getCenters(elem) {
     return elem.centers;
   },
 
-  // Where color/alpha go
+  // Fill render geometry for a single element
+  fillRenderGeometry(constants, elem, elemIndex, out, outIndex) {
+    const outOffset = outIndex * this.floatsPerInstance;
+
+    // Position - same for all 3 rings
+    acopy(elem.centers, elemIndex * 3, out, outOffset, 3);
+
+    // Half sizes - same for all 3 rings
+    if (constants.half_size) {
+      acopy(constants.half_size as ArrayLike<number>, 0, out, outOffset + 3, 3);
+    } else {
+      acopy(elem.half_sizes!, elemIndex * 3, out, outOffset + 3, 3);
+    }
+
+    // Quaternion - same for all 3 rings
+    if (constants.quaternion) {
+      acopy(constants.quaternion, 0, out, outOffset + 6, 4);
+    } else {
+      acopy(elem.quaternions!, elemIndex * 4, out, outOffset + 6, 4);
+    }
+
+    // The shader will handle the ring orientation based on instance_index
+    // See ringVertCode in shaders.ts which uses the instance_index to determine
+    // which axis (X, Y, or Z) the ring should be oriented along
+
+    // Color and alpha - same for all 3 rings
+    fillAlpha(this, constants, elem, elemIndex, out, outOffset)
+    fillColor(this, constants, elem, elemIndex, out, outOffset)
+  },
   colorOffset: 10,
   alphaOffset: 13,
-
-  fillRenderGeometry(elem, i, out, offset) {
-    const constants = getElementConstants(this, elem);
-
-    // Position
-    acopy(elem.centers, i * 3, out, offset, 3)
-
-
-    if (constants.half_size) {
-      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3)
-    } else {
-      acopy(elem.half_sizes as ArrayLike<number>, i * 3, out, offset + 3, 3)
-    }
-
-    if (constants.quaternion) {
-      acopy(constants.quaternion, 0, out, offset + 6, 4)
-    } else {
-      acopy(elem.quaternions!, i * 4, out, offset + 6, 4)
-    }
-  },
 
   applyDecorationScale(out, offset, scaleFactor) {
     // Multiply the sizes
@@ -641,28 +633,33 @@ export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
     out[offset + 5] *= scaleFactor;
   },
 
-  fillPickingGeometry(elem, i, out, offset, baseID) {
-    const constants = getElementConstants(this, elem);
+  // Fill picking geometry for a single element
+  fillPickingGeometry(constants, elem, elemIndex, out, outIndex, baseID) {
+    const outOffset = outIndex * this.floatsPerPicking;
 
-    // Position
-    acopy(elem.centers, i * 3, out, offset, 3);
+    // Position - same for all 3 rings
+    acopy(elem.centers, elemIndex * 3, out, outOffset, 3);
 
-    // Half sizes
+    // Half sizes - same for all 3 rings
     if (constants.half_size) {
-      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3);
+      acopy(constants.half_size as ArrayLike<number>, 0, out, outOffset + 3, 3);
     } else {
-      acopy(elem.half_sizes as ArrayLike<number>, i * 3, out, offset + 3, 3);
+      acopy(elem.half_sizes!, elemIndex * 3, out, outOffset + 3, 3);
     }
 
-    // Quaternion
+    // Quaternion - same for all 3 rings
     if (constants.quaternion) {
-      acopy(constants.quaternion, 0, out, offset + 6, 4);
+      acopy(constants.quaternion, 0, out, outOffset + 6, 4);
     } else {
-      acopy(elem.quaternions!, i * 4, out, offset + 6, 4);
+      acopy(elem.quaternions!, elemIndex * 4, out, outOffset + 6, 4);
     }
 
-    // picking ID
-    out[offset + 10] = packID(baseID + i);
+    // The shader will handle the ring orientation based on instance_index
+    // See ringPickingVertCode in shaders.ts which uses the instance_index to determine
+    // which axis (X, Y, or Z) the ring should be oriented along
+
+    // Use the ellipsoid index for picking - same for all 3 rings
+    out[outOffset + 10] = packID(baseID + elemIndex);
   },
 
   renderConfig: {
@@ -734,50 +731,57 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
     quaternion: [0, 0, 0, 1],
   },
 
-  getCount(elem) {
-    // 3 rings per ellipsoid
-    return (elem.centers.length / 3) * 3;
+  // Return the number of ellipsoids (elements), not instances
+  getElementCount(elem) {
+    return elem.centers.length / 3;
   },
 
-  getFloatsPerInstance() {
-    // position(3) + size(3) + quat(4) + color(3) + alpha(1) = 14
-    return 14;
-  },
+  floatsPerInstance: 14, // position(3) + size(3) + quat(4) + color(3) + alpha(1) = 14 per ring
 
-  getFloatsPerPicking() {
-    // same layout as Ellipsoid: 11
-    return 11;
-  },
+  floatsPerPicking: 11, // same layout as Ellipsoid: 11 per ring
 
+  // This tells the system we have 3 instances per element
+  instancesPerElement: 3,
+
+  // Return centers for the elements (not instances)
   getCenters(elem) {
-    // For sorting or bounding, etc. Usually the "per shape" centers,
-    // not the 3x expanded. We'll just return the actual centers
+    // Just return the original centers - one per element
     return elem.centers;
   },
 
-  // offsets
-  colorOffset: 10,
-  alphaOffset: 13,
+  // Fill render geometry for a single instance
+  fillRenderGeometry(constants, elem, elemIndex, out, outIndex) {
+    const outOffset = outIndex * this.floatsPerInstance;
 
-  fillRenderGeometry(elem, ringIndex, out, offset) {
-    const i = Math.floor(ringIndex / 3);
-    const constants = getElementConstants(this, elem);
     // Position
-    acopy(elem.centers, i * 3, out, offset, 3);
+    acopy(elem.centers, elemIndex * 3, out, outOffset, 3);
 
     // Half sizes
     if (constants.half_size) {
-      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3);
+      acopy(constants.half_size as ArrayLike<number>, 0, out, outOffset + 3, 3);
     } else {
-      acopy(elem.half_sizes!, i * 3, out, offset + 3, 3);
+      acopy(elem.half_sizes!, elemIndex * 3, out, outOffset + 3, 3);
     }
 
-    // Quaternions
+    // Quaternion
     if (constants.quaternion) {
-      acopy(constants.quaternion, 0, out, offset + 6, 4);
+      acopy(constants.quaternion, 0, out, outOffset + 6, 4);
     } else {
-      acopy(elem.quaternions!, i * 4, out, offset + 6, 4);
+      acopy(elem.quaternions!, elemIndex * 4, out, outOffset + 6, 4);
     }
+
+    // The shader will handle the ring orientation based on instance_index
+
+    fillAlpha(this, constants, elem, elemIndex, out, outOffset)
+    fillColor(this, constants, elem, elemIndex, out, outOffset)
+  },
+
+  colorOffset: 10,
+  alphaOffset: 13,
+
+  applyDecoration(dec, out, outIndex, floatsPerInstance) {
+    // outIndex is already the instance index, so we can just apply the decoration directly
+    applyDecoration(this, dec, out, outIndex * floatsPerInstance);
   },
 
   applyDecorationScale(out, offset, scaleFactor) {
@@ -786,33 +790,30 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
     out[offset + 5] *= scaleFactor;
   },
 
-  fillPickingGeometry(elem, ringIndex, out, offset, baseID) {
-    const i = Math.floor(ringIndex / 3);
-    const constants = getElementConstants(this, elem);
+  fillPickingGeometry(constants, elem, elemIndex, out, outIndex, baseID) {
+    const outOffset = outIndex * this.floatsPerPicking;
+
     // Position
-    acopy(elem.centers, i * 3, out, offset, 3);
+    acopy(elem.centers, elemIndex * 3, out, outOffset, 3);
 
     // Half sizes
     if (constants.half_size) {
-      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3);
+      acopy(constants.half_size as ArrayLike<number>, 0, out, outOffset + 3, 3);
     } else {
-      acopy(elem.half_sizes!, i * 3, out, offset + 3, 3);
+      acopy(elem.half_sizes!, elemIndex * 3, out, outOffset + 3, 3);
     }
 
-    // Quaternions
+    // Quaternion
     if (constants.quaternion) {
-      acopy(constants.quaternion, 0, out, offset + 6, 4);
+      acopy(constants.quaternion, 0, out, outOffset + 6, 4);
     } else {
-      acopy(elem.quaternions!, i * 4, out, offset + 6, 4);
+      acopy(elem.quaternions!, elemIndex * 4, out, outOffset + 6, 4);
     }
 
-    // Use the ellipsoid index for picking, not the ring index
-    out[offset + 10] = packID(baseID + i);
-  },
+    // The shader will handle the ring orientation based on instance_index
 
-  // We want ringIndex to use the same color index as the "i-th" ellipsoid
-  getColorIndexForInstance(elem, ringIndex) {
-    return Math.floor(ringIndex / 3);
+    // Use the ellipsoid index for picking
+    out[outOffset + 10] = packID(baseID + elemIndex);
   },
 
   renderConfig: {
@@ -869,14 +870,6 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
   createGeometryResource(device) {
     return createBuffers(device, createTorusGeometry(1.0, 0.03, 40, 12));
   },
-
-  applyDecoration(out, instanceIndex, dec, floatsPerInstance) {
-      // Apply to all three rings of the target ellipsoid
-      for (let ring = 0; ring < 3; ring++) {
-        const ringIndex = instanceIndex * 3 + ring;
-        applyDefaultDecoration(out, ringIndex * floatsPerInstance, dec, this);
-    }
-  },
 };
 
 /** ===================== CUBOID ===================== **/
@@ -898,57 +891,43 @@ export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
     quaternion: [0, 0, 0, 1],
   },
 
-  getCount(elem) {
+  getElementCount(elem) {
     return elem.centers.length / 3;
   },
 
-  getFloatsPerInstance() {
-    // 3 pos + 3 size + 4 quat + 3 color + 1 alpha = 14
-    return 14;
-  },
+  floatsPerInstance: 14, // 3 pos + 3 size + 4 quat + 3 color + 1 alpha = 14
 
-  getFloatsPerPicking() {
-    // 3 pos + 3 size + 4 quat + 1 pickID = 11
-    return 11;
-  },
+  floatsPerPicking: 11, // 3 pos + 3 size + 4 quat + 1 pickID = 11
 
   getCenters(elem) {
     return elem.centers;
   },
 
-  colorOffset: 10,
-  alphaOffset: 13,
-
-  fillRenderGeometry(elem, i, out, offset) {
-    const constants = getElementConstants(this, elem);
+  fillRenderGeometry(constants, elem, i, out, outIndex) {
+    const outOffset = outIndex * this.floatsPerInstance;
 
     // Position
-    acopy(elem.centers, i * 3, out, offset, 3);
+    acopy(elem.centers, i * 3, out, outOffset, 3);
 
     // Half sizes
     if (constants.half_size) {
-      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3);
+      acopy(constants.half_size as ArrayLike<number>, 0, out, outOffset + 3, 3);
     } else {
-      acopy(elem.half_sizes as ArrayLike<number>, i * 3, out, offset + 3, 3);
+      acopy(elem.half_sizes as ArrayLike<number>, i * 3, out, outOffset + 3, 3);
     }
 
     // Quaternion
     if (constants.quaternion) {
-      acopy(constants.quaternion, 0, out, offset + 6, 4);
+      acopy(constants.quaternion, 0, out, outOffset + 6, 4);
     } else {
-      acopy(elem.quaternions!, i * 4, out, offset + 6, 4);
+      acopy(elem.quaternions!, i * 4, out, outOffset + 6, 4);
     }
 
-    // Color - use constant or per-instance value
-    if (constants.color) {
-      acopy(constants.color, 0, out, offset + 10, 3);
-    } else {
-      acopy(elem.colors!, i * 3, out, offset + 10, 3);
-    }
-
-    // Alpha - use constant or per-instance value
-    out[offset + 13] = constants.alpha || elem.alphas![i];
+    fillAlpha(this, constants, elem, i, out, outOffset)
+    fillColor(this, constants, elem, i, out, outOffset)
   },
+  colorOffset: 10,
+  alphaOffset: 13,
 
   applyDecorationScale(out, offset, scaleFactor) {
     // multiply half_sizes
@@ -957,28 +936,28 @@ export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
     out[offset + 5] *= scaleFactor;
   },
 
-  fillPickingGeometry(elem, i, out, offset, baseID) {
-    const constants = getElementConstants(this, elem);
+  fillPickingGeometry(constants, elem, i, out, outIndex, baseID) {
+    const outOffset = outIndex * this.floatsPerPicking;
 
     // Position
-    acopy(elem.centers, i * 3, out, offset, 3);
+    acopy(elem.centers, i * 3, out, outOffset, 3);
 
     // Half sizes
     if (constants.half_size) {
-      acopy(constants.half_size as ArrayLike<number>, 0, out, offset + 3, 3);
+      acopy(constants.half_size as ArrayLike<number>, 0, out, outOffset + 3, 3);
     } else {
-      acopy(elem.half_sizes as ArrayLike<number>, i * 3, out, offset + 3, 3);
+      acopy(elem.half_sizes as ArrayLike<number>, i * 3, out, outOffset + 3, 3);
     }
 
     // Quaternion
     if (constants.quaternion) {
-      acopy(constants.quaternion, 0, out, offset + 6, 4);
+      acopy(constants.quaternion, 0, out, outOffset + 6, 4);
     } else {
-      acopy(elem.quaternions!, i * 4, out, offset + 6, 4);
+      acopy(elem.quaternions!, i * 4, out, outOffset + 6, 4);
     }
 
     // picking ID
-    out[offset + 10] = packID(baseID + i);
+    out[outOffset + 10] = packID(baseID + i);
   },
 
   renderConfig: {
@@ -1088,7 +1067,7 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
     size: 0.02
   },
 
-  getCount(elem) {
+  getElementCount(elem) {
     return countSegments(elem);
   },
 
@@ -1112,19 +1091,9 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
     return centers;
   },
 
-  getFloatsPerInstance() {
-    // start(3) + end(3) + size(1) + color(3) + alpha(1) = 11
-    return 11;
-  },
+  floatsPerInstance: 11, // start(3) + end(3) + size(1) + color(3) + alpha(1) = 11
 
-  getFloatsPerPicking() {
-    // start(3) + end(3) + size(1) + pickID(1) = 8
-    return 8;
-  },
-
-  // offsets
-  colorOffset: 7,
-  alphaOffset: 10,
+  floatsPerPicking: 8, // start(3) + end(3) + size(1) + pickID(1) = 8
 
   /**
    * We want color/alpha to come from the line index (points[..+3]),
@@ -1137,44 +1106,50 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
     return Math.floor(elem.points[p * 4 + 3]);
   },
 
-  fillRenderGeometry(elem, segmentIndex, out, offset) {
+  fillRenderGeometry(constants, elem, segmentIndex, out, outIndex) {
+    const outOffset = outIndex * this.floatsPerInstance;
     const segMap = prepareLineSegments(elem);
     const p = segMap[segmentIndex];
-    const constants = getElementConstants(this, elem);
 
     // Start
-    acopy(elem.points, p * 4, out, offset, 3);
+    acopy(elem.points, p * 4, out, outOffset, 3);
 
     // End
-    acopy(elem.points, (p + 1) * 4, out, offset + 3, 3);
+    acopy(elem.points, (p + 1) * 4, out, outOffset + 3, 3);
 
     // Size
     const lineIndex = Math.floor(elem.points[p * 4 + 3]);
-    out[offset + 6] = constants.size || elem.sizes![lineIndex];
+    out[outOffset + 6] = constants.size || elem.sizes![lineIndex];
+
+    fillAlpha(this, constants, elem, segmentIndex, out, outOffset)
+    fillColor(this, constants, elem, segmentIndex, out, outOffset)
+
   },
+  colorOffset: 7,
+  alphaOffset: 10,
 
   applyDecorationScale(out, offset, scaleFactor) {
     // only the size is at offset+6
     out[offset + 6] *= scaleFactor;
   },
 
-  fillPickingGeometry(elem, segmentIndex, out, offset, baseID) {
+  fillPickingGeometry(constants, elem, segmentIndex, out, outIndex, baseID) {
+    const outOffset = outIndex * this.floatsPerPicking;
     const segMap = prepareLineSegments(elem);
     const p = segMap[segmentIndex];
-    const constants = getElementConstants(this, elem);
 
     // Start
-    acopy(elem.points, p * 4, out, offset, 3);
+    acopy(elem.points, p * 4, out, outOffset, 3);
 
     // End
-    acopy(elem.points, (p + 1) * 4, out, offset + 3, 3);
+    acopy(elem.points, (p + 1) * 4, out, outOffset + 3, 3);
 
     // Size
     const lineIndex = Math.floor(elem.points[p * 4 + 3]);
-    out[offset + 6] = constants.size || elem.sizes![lineIndex];
+    out[outOffset + 6] = constants.size || elem.sizes![lineIndex];
 
     // pickID
-    out[offset + 7] = packID(baseID + segmentIndex);
+    out[outOffset + 7] = packID(baseID + segmentIndex);
   },
 
   renderConfig: {
@@ -1236,6 +1211,10 @@ export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
     return createBuffers(device, createBeamGeometry());
   },
 };
+
+
+
+
 
 /** ===================== UNION TYPE FOR ALL COMPONENT CONFIGS ===================== **/
 

@@ -65,6 +65,7 @@ export interface SceneInnerProps {
   /** Callback to fire when scene is initially ready */
   onReady: () => void;
 }
+
 function initGeometryResources(device: GPUDevice, resources: GeometryResources) {
   // Create geometry for each primitive type
   for (const [primitiveName, spec] of Object.entries(primitiveRegistry)) {
@@ -104,7 +105,7 @@ function ensurePickingData(device: GPUDevice, components: ComponentConfig[], ro:
     const offset = ro.componentOffsets[i];
     const component = components[offset.componentIdx];
     const count = offset.count;
-    const floatsPerInstance = ro.spec.getFloatsPerPicking();
+    const floatsPerInstance = ro.spec.floatsPerPicking;
     const componentFloats = count * floatsPerInstance;
 
     // Get the pre-partitioned indices for this component
@@ -284,7 +285,43 @@ function hasCameraMoved(current: glMatrix.vec3, last: glMatrix.vec3 | undefined)
   return (dx*dx + dy*dy + dz*dz) > 0.0001;
 }
 
-// Helper to update sorting arrays and perform sort
+/**
+ * Sorts indices by distance (furthest to closest) for correct alpha blending
+ */
+function sortIndicesByDistance(
+  indices: Uint32Array,
+  distances: Float32Array,
+  count: number
+): void {
+  // Create a temporary array of index/distance pairs for sorting
+  const pairs = new Array(count);
+  for (let i = 0; i < count; i++) {
+    pairs[i] = { index: indices[i], distance: distances[i] };
+  }
+
+  // Sort by distance (furthest to closest)
+  pairs.sort((a, b) => {
+    // If distances are equal, maintain relative order based on original indices
+    const diff = b.distance - a.distance;
+    return diff !== 0 ? diff : a.index - b.index;
+  });
+
+  // Copy sorted indices back to the original array
+  for (let i = 0; i < count; i++) {
+    indices[i] = pairs[i].index;
+  }
+}
+
+/**
+ * Partitions sorted indices by component
+ */
+function partitionSortedIndices(
+  sortedIndices: Uint32Array,
+  offsets: ComponentOffset[]
+): Uint32Array[] {
+  return partitionIndices(sortedIndices, offsets);
+}
+
 function updateInstanceSorting(
   ro: RenderObject,
   components: ComponentConfig[],
@@ -315,33 +352,46 @@ function updateInstanceSorting(
   let globalIdx = 0;
   for (const offset of ro.componentOffsets) {
     const component = components[offset.componentIdx];
-    const centers = ro.spec.getCenters(component);
+    const spec = ro.spec;
+    const centers = spec.getCenters(component);
+    const instanceCount = offset.count;
 
-    // For each instance in this component
-    for (let i = 0; i < offset.count; i++) {
-      const idx = globalIdx + i;
-      // Store the global index
-      ro.sortedIndices![idx] = offset.start + i;
+    const elementCount = spec.getElementCount(component);
 
-      // Calculate distance to camera
-      const baseIdx = i * 3;
+    const instancesPerElement = spec.instancesPerElement || 1;
+
+    // For each element in this component
+    for (let elemIdx = 0; elemIdx < elementCount; elemIdx++) {
+      // Calculate distance to camera once per element
+      const baseIdx = elemIdx * 3;
       const x = centers[baseIdx] - cameraPos[0];
       const y = centers[baseIdx + 1] - cameraPos[1];
       const z = centers[baseIdx + 2] - cameraPos[2];
-      ro.distances![idx] = x * x + y * y + z * z;
+      const distanceSq = x * x + y * y + z * z;
+
+      // For each instance of this element
+      for (let instOffset = 0; instOffset < instancesPerElement; instOffset++) {
+        const instanceIdx = elemIdx * instancesPerElement + instOffset;
+        if (instanceIdx >= instanceCount) break; // Safety check
+
+        const idx = globalIdx + instanceIdx;
+
+        // Store the global index
+        ro.sortedIndices![idx] = offset.start + instanceIdx;
+
+        // Use the same distance for all instances of the same element
+        ro.distances![idx] = distanceSq;
+      }
     }
-    globalIdx += offset.count;
+
+    globalIdx += instanceCount;
   }
 
-  // Sort indices by distance (furthest to nearest)
-  ro.sortedIndices!.sort((a, b) => {
-    // If distances are equal, maintain relative order based on original indices
-    const diff = ro.distances![b] - ro.distances![a];
-    return diff !== 0 ? diff : a - b;
-  });
+  // Sort indices by distance (furthest to closest for correct alpha blending)
+  sortIndicesByDistance(ro.sortedIndices!, ro.distances!, totalCount);
 
-  // Invalidate cached partitions since sorting has changed
-  ro.cachedPartitions = undefined;
+  // Partition the sorted indices by component
+  ro.cachedPartitions = partitionSortedIndices(ro.sortedIndices!, ro.componentOffsets);
 }
 
 /**
@@ -618,7 +668,7 @@ export function SceneInner({
 
       setIsReady(true);
     } catch(err){
-      console.error("initWebGPU error:", err);
+      console.error("Error initializing WebGPU:", err);
     }
   },[]);
 
@@ -683,8 +733,6 @@ export function SceneInner({
 
   // Update the collectTypeData function signature
   function collectTypeData(components: ComponentConfig[]): Map<ComponentType, TypeInfo> {
-
-
     const typeArrays = new Map<ComponentType, TypeInfo>();
 
     // Single pass through components
@@ -692,12 +740,16 @@ export function SceneInner({
       const spec = primitiveRegistry[comp.type];
       if (!spec) return;
 
-      const count = spec.getCount(comp);
-      if (count === 0) return;
+      // Get the element count and instance count
+      const elementCount = spec.getElementCount(comp);
+      const instancesPerElement = spec.instancesPerElement || 1;
+      const instanceCount = elementCount * instancesPerElement;
+
+      if (instanceCount === 0) return;
 
       // Just allocate the array without building data
-      const floatsPerInstance = spec.getFloatsPerInstance();
-      const size = count * floatsPerInstance * 4; // 4 bytes per float
+      const floatsPerInstance = spec.floatsPerInstance;
+      const size = instanceCount * floatsPerInstance * 4; // 4 bytes per float
 
       let typeInfo = typeArrays.get(comp.type);
       if (!typeInfo) {
@@ -715,8 +767,8 @@ export function SceneInner({
       typeInfo.components.push(comp);
       typeInfo.indices.push(idx);
       typeInfo.offsets.push(typeInfo.totalSize);
-      typeInfo.counts.push(count);
-      typeInfo.totalCount += count;
+      typeInfo.counts.push(instanceCount);
+      typeInfo.totalCount += instanceCount;
       typeInfo.totalSize += size;
     });
 
@@ -752,10 +804,10 @@ export function SceneInner({
       const totalInstanceCount = info.counts.reduce((sum, count) => sum + count, 0);
 
       // Calculate total size needed for all instances of this type
-      const floatsPerInstance = spec.getFloatsPerInstance();
+      const floatsPerInstance = spec.floatsPerInstance;
       const renderStride = Math.ceil(floatsPerInstance * 4);  // 4 bytes per float
       totalRenderSize += align16(totalInstanceCount * renderStride);
-      totalPickingSize += align16(totalInstanceCount * spec.getFloatsPerPicking() * 4);
+      totalPickingSize += align16(totalInstanceCount * spec.floatsPerPicking * 4);
     });
 
     // Create or recreate dynamic buffers if needed
@@ -804,8 +856,8 @@ export function SceneInner({
         const pickingOffset = align16(dynamicBuffers.pickingOffset);
 
         // Calculate strides
-        const renderInstanceFloats = spec.getFloatsPerInstance();
-        const pickingInstanceFloats = spec.getFloatsPerPicking();
+        const renderInstanceFloats = spec.floatsPerInstance;
+        const pickingInstanceFloats = spec.floatsPerPicking;
         const renderStride = renderInstanceFloats * 4;
         const pickingStride = pickingInstanceFloats * 4;
 
@@ -937,7 +989,7 @@ export function SceneInner({
 
         // Update buffer offsets ensuring alignment
         dynamicBuffers.renderOffset = renderOffset + align16(renderData.byteLength);
-        dynamicBuffers.pickingOffset = pickingOffset + align16(totalInstanceCount * spec.getFloatsPerPicking() * 4);
+        dynamicBuffers.pickingOffset = pickingOffset + align16(totalInstanceCount * spec.floatsPerPicking * 4);
 
       } catch (error) {
         console.error(`Error creating render object for type ${type}:`, error);
@@ -1014,7 +1066,7 @@ export function SceneInner({
         const offset = ro.componentOffsets[i];
         const component = components![offset.componentIdx];
         const count = offset.count;
-        const floatsPerInstance = ro.spec.getFloatsPerInstance();
+        const floatsPerInstance = ro.spec.floatsPerInstance;
         const componentFloats = count * floatsPerInstance;
 
         // Create a view into the render data array for this component
@@ -1468,4 +1520,40 @@ function componentHasAlpha(component: ComponentConfig) {
     || (component.alpha && component.alpha !== 1.0)
     || component.decorations?.some(d => (d.alpha !== undefined && d.alpha !== 1.0 && d.indexes?.length > 0))
   )
+}
+
+/**
+ * Partitions indices by component offsets
+ */
+function partitionIndices(
+  indices: Uint32Array,
+  offsets: ComponentOffset[]
+): Uint32Array[] {
+  const result: Uint32Array[] = [];
+  const writeIndices: number[] = [];
+
+  // Initialize result arrays and write indices
+  for (let j = 0; j < offsets.length; j++) {
+    const { count } = offsets[j];
+    result[j] = new Uint32Array(count);
+    writeIndices[j] = 0;
+  }
+
+  // Partition indices by component
+  for (let i = 0; i < indices.length; i++) {
+    const globalIdx = indices[i];
+
+    // Find the component this index belongs to
+    // For a small number of components, a simple linear scan is efficient
+    for (let j = 0; j < offsets.length; j++) {
+      const { start, count } = offsets[j];
+      if (globalIdx >= start && globalIdx < start + count) {
+        // Store the relative index in the appropriate partition
+        result[j][writeIndices[j]++] = globalIdx - start;
+        break;
+      }
+    }
+  }
+
+  return result;
 }

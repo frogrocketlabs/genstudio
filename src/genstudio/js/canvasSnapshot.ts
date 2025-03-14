@@ -6,7 +6,7 @@ interface CanvasRegistry {
     overlay?: HTMLImageElement;
     device?: GPUDevice;
     context?: GPUCanvasContext;
-    renderCallback?: (texture: GPUTexture) => void;
+    renderCallback?: (texture: GPUTexture, depthTexture: GPUTexture | null) => void;
   };
 }
 
@@ -24,7 +24,7 @@ const activeCanvases: CanvasRegistry = {};
 export function useCanvasSnapshot(
   device?: GPUDevice,
   context?: GPUCanvasContext,
-  renderCallback?: (texture: GPUTexture) => void
+  renderCallback?: (texture: GPUTexture, depthTexture: GPUTexture | null) => void
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const id = useMemo(() => `scene3d_${Math.random().toString(36).slice(2)}`, []);

@@ -252,8 +252,7 @@ fn vs_main(
   @location(5) color: vec3<f32>,
   @location(6) alpha: f32
 )-> VSOut {
-  // Get the base instance index (divide by 3 since we have 3 rings per instance)
-  let baseInstance = instID / 3u;
+
   let ringIndex = i32(instID % 3u);
   var lp = localPos;
 

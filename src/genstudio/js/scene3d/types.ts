@@ -3,7 +3,7 @@ export interface PipelineCacheEntry {
     device: GPUDevice;
   }
 
-export interface PrimitiveSpec<ConfigType extends BaseComponentConfig> {
+export interface PrimitiveSpec<ConfigType> {
     /**
      * The type/name of this primitive spec
      */
@@ -15,26 +15,33 @@ export interface PrimitiveSpec<ConfigType extends BaseComponentConfig> {
     defaults?: ElementConstants;
 
     /**
-     * Returns the number of instances in this component.
+     * Returns the number of elements in this component.
+     * For components with instancesPerElement > 1, this returns the element count.
      */
-    getCount(elem: ConfigType): number;
+    getElementCount(elem: ConfigType): number;
 
     /**
-     * Returns the number of floats needed per instance for render data.
+     * Number of instances created per element. Defaults to 1 if not specified.
+     * Used when a single logical element maps to multiple render instances.
      */
-    getFloatsPerInstance(): number;
+    instancesPerElement?: number;
 
     /**
-     * Returns the number of floats needed per instance for picking data.
+     * Number of floats needed per instance for render data.
      */
-    getFloatsPerPicking(): number;
+    floatsPerInstance: number;
+
+    /**
+     * Number of floats needed per instance for picking data.
+     */
+    floatsPerPicking: number;
 
     /**
      * Returns the centers of all instances in this component.
      * Used for transparency sorting and distance calculations.
-     * @returns Object containing centers array and stride, or undefined if not applicable
+     * @returns Float32Array or number[] containing center coordinates
      */
-    getCenters(elem: ConfigType): Float32Array;
+    getCenters(elem: ConfigType): Float32Array | number[];
 
     /**
      * Offset for color data in the vertex buffer
@@ -54,7 +61,7 @@ export interface PrimitiveSpec<ConfigType extends BaseComponentConfig> {
      * @param offset Offset in the output array to start writing
      * @param scale Scale factor to apply to the instance
      */
-    fillRenderGeometry(elem: ConfigType, i: number, out: Float32Array, offset: number): void;
+    fillRenderGeometry(constants: ElementConstants, elem: ConfigType, i: number, out: Float32Array, offset: number): void;
 
     /**
      * Applies a scale decoration to an instance.
@@ -73,7 +80,7 @@ export interface PrimitiveSpec<ConfigType extends BaseComponentConfig> {
      * @param baseID Base ID for picking
      * @param scale Scale factor to apply to the instance
      */
-    fillPickingGeometry(elem: ConfigType, i: number, out: Float32Array, offset: number, baseID: number): void;
+    fillPickingGeometry(constants: ElementConstants, elem: ConfigType, i: number, out: Float32Array, offset: number, baseID: number): void;
 
     /**
      * Optional method to get the color index for an instance.
@@ -92,7 +99,27 @@ export interface PrimitiveSpec<ConfigType extends BaseComponentConfig> {
      * @param dec The decoration to apply
      * @param floatsPerInstance Number of floats per instance in the buffer
      */
-    applyDecoration?(out: Float32Array, instanceIndex: number, dec: Decoration, floatsPerInstance: number): void;
+    applyDecoration?(dec: Decoration, out: Float32Array, instanceIndex: number, floatsPerInstance: number): void;
+
+    /**
+     * Fills color data for a single instance.
+     * @param constants The component constants
+     * @param elem The component containing instance data
+     * @param elemIndex Index of the instance
+     * @param out Output Float32Array to write data to
+     * @param outIndex Index in output array to write color
+     */
+    fillColor?(constants: ElementConstants, elem: BaseComponentConfig, elemIndex: number, out: Float32Array, outIndex: number): void;
+
+    /**
+     * Fills alpha data for a single instance.
+     * @param constants The component constants
+     * @param elem The component containing instance data
+     * @param elemIndex Index of the instance
+     * @param out Output Float32Array to write data to
+     * @param outIndex Index in output array to write alpha
+     */
+    fillAlpha?(constants: ElementConstants, elem: BaseComponentConfig, elemIndex: number, out: Float32Array, outIndex: number): void;
 
     /**
      * Default WebGPU rendering configuration for this primitive type.
@@ -249,6 +276,7 @@ export interface GeometryResource {
 export interface GeometryResources {
   PointCloud: GeometryResource | null;
   Ellipsoid: GeometryResource | null;
+  EllipsoidAxes: GeometryResource | null;
   Cuboid: GeometryResource | null;
   LineBeams: GeometryResource | null;
 }
