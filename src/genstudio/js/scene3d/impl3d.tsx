@@ -20,8 +20,12 @@ import {
   createCameraState,
   orbit,
   pan,
-  zoom
-} from './camera3d';
+  zoom,
+  DraggingState
+} from './camera3d'
+
+import isEqual from 'lodash-es/isEqual';
+
 
 import { ComponentConfig, cuboidSpec, ellipsoidAxesSpec, ellipsoidSpec, lineBeamsSpec, pointCloudSpec, buildPickingData, buildRenderData } from './components';
 import { unpackID } from './picking';
@@ -529,15 +533,20 @@ export function SceneInner({
   });
 
   // Use the appropriate camera state based on whether we're controlled or not
-  const activeCamera = useMemo(() => {
-      if (controlledCamera) {
-          return createCameraState(controlledCamera);
-      }
-      return internalCamera;
+  const activeCameraRef = useRef<CameraState | null>(null);
+  useMemo(() => {
+    let nextCamera: CameraState;
+    if (controlledCamera) {
+      nextCamera = createCameraState(controlledCamera);
+    } else {
+      nextCamera = internalCamera;
+    }
+    activeCameraRef.current = nextCamera;
+    return nextCamera;
   }, [controlledCamera, internalCamera]);
 
   const handleCameraUpdate = useCallback((updateFn: (camera: CameraState) => CameraState) => {
-    const newCameraState = updateFn(activeCamera);
+    const newCameraState = updateFn(activeCameraRef.current!);
 
     if (controlledCamera) {
         onCameraChange?.(createCameraParams(newCameraState));
@@ -545,7 +554,7 @@ export function SceneInner({
         setInternalCamera(newCameraState);
         onCameraChange?.(createCameraParams(newCameraState));
     }
-  }, [activeCamera, controlledCamera, onCameraChange]);
+  }, [controlledCamera, onCameraChange]);
 
   // Create a render callback for the canvas snapshot system
   // This function is called during PDF export to render the 3D scene to a texture
@@ -568,7 +577,7 @@ export function SceneInner({
       uniformBindGroup,
       onRenderComplete: () => {}
     });
-  }, [containerWidth, containerHeight, activeCamera]);
+  }, [containerWidth, containerHeight, activeCameraRef.current!]);
 
 
   const { canvasRef } = useCanvasSnapshot(
@@ -1299,44 +1308,18 @@ export function SceneInner({
   /******************************************************
    * E) Mouse Handling
    ******************************************************/
-  /**
-   * Tracks the current state of mouse interaction with the scene.
-   * Used for camera control and picking operations.
-   */
-  interface MouseState {
-    /** Current interaction mode */
-    type: 'idle'|'dragging';
+  const draggingState = useRef<DraggingState | null>(null);
 
-    /** Which mouse button initiated the drag (0=left, 1=middle, 2=right) */
-    button?: number;
+  // Helper function to compare modifiers arrays
+  function hasModifiers(actual: string[] | undefined, expected: string[]): boolean {
+    if (!actual) return expected.length === 0;
+    if (actual.length !== expected.length) return false;
 
-    /** Initial X coordinate when drag started */
-    startX?: number;
+    const sortedActual = [...actual].sort();
+    const sortedExpected = [...expected].sort();
 
-    /** Initial Y coordinate when drag started */
-    startY?: number;
-
-    /** Most recent X coordinate during drag */
-    lastX?: number;
-
-    /** Most recent Y coordinate during drag */
-    lastY?: number;
-
-    /** Whether shift key was held when drag started */
-    isShiftDown?: boolean;
-
-    /** Whether ctrl key was held when drag started */
-    isCtrlDown?: boolean;
-
-    /** Whether alt key was held when drag started */
-    isAltDown?: boolean;
-
-    /** Accumulated drag distance in pixels */
-    dragDistance?: number;
-    /** Initial camera state when drag started */
-    startCam?: CameraState
+    return isEqual(sortedActual, sortedExpected);
   }
-  const mouseState=useRef<MouseState>({type:'idle'});
 
   // Add throttling for hover picking
   const throttledPickAtScreenXY = useCallback(
@@ -1346,84 +1329,91 @@ export function SceneInner({
     [pickAtScreenXY]
   );
 
-  // Rename to be more specific to scene3d
-  const handleScene3dMouseMove = useCallback((e: MouseEvent) => {
-    if(!canvasRef.current) return;
+  // Picking handler - always registered on canvas
+  const handlePickingMouseMove = useCallback((e: MouseEvent) => {
+    if (!canvasRef.current || draggingState.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    throttledPickAtScreenXY(x, y, 'hover');
+  }, [throttledPickAtScreenXY]);
 
-    const st = mouseState.current;
-    if(st.type === 'dragging' && st.lastX !== undefined && st.lastY !== undefined) {
-        const dx = e.clientX - st.lastX;
-        const dy = e.clientY - st.lastY;
-        st.dragDistance = (st.dragDistance||0) + Math.sqrt(dx*dx + dy*dy);
-
-        if(st.button === 2 || st.isShiftDown) {
-            handleCameraUpdate(cam => pan(cam, dx, dy));
-        } else if(st.button === 0) {
-            handleCameraUpdate(cam => orbit(cam, dx, dy));
-        }
-
-        st.lastX = e.clientX;
-        st.lastY = e.clientY;
-    } else if(st.type === 'idle') {
-        throttledPickAtScreenXY(x, y, 'hover');
+  // Drag handler - attached/detached directly during drag
+  const handleDragMouseMove = useCallback((e: MouseEvent) => {
+    if (!canvasRef.current || !draggingState.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const st = draggingState.current;
+    st.x = x;
+    st.y = y;
+    if (st.button === 2 || hasModifiers(st.modifiers, ['shift'])) {
+      handleCameraUpdate(cam => pan(st));
+    } else if (st.button === 0) {
+      handleCameraUpdate(cam => orbit(st));
     }
-}, [handleCameraUpdate, throttledPickAtScreenXY]);
+  }, [handleCameraUpdate]);
+
+  const handleMouseUp = useCallback((e: MouseEvent) => {
+    const st = draggingState.current;
+    if (st) {
+      if (!canvasRef.current) return;
+      const dx = st.x! - st.startX;
+      const dy = st.y! - st.startY;
+      const dragDistance = Math.sqrt(dx*dx + dy*dy);
+      if ((dragDistance || 0) < 4) {
+        pickAtScreenXY(st.x!, st.y!, 'click');
+      }
+      // Remove window listeners
+      window.removeEventListener('mousemove', handleDragMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    }
+    draggingState.current = null;
+  }, [pickAtScreenXY, handleDragMouseMove]);
 
   const handleScene3dMouseDown = useCallback((e: MouseEvent) => {
-    mouseState.current = {
-      type: 'dragging',
+    if (!canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+
+    const modifiers: string[] = [];
+    if (e.shiftKey) modifiers.push('shift');
+    if (e.ctrlKey) modifiers.push('ctrl');
+    if (e.altKey) modifiers.push('alt');
+
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    draggingState.current = {
       button: e.button,
-      startX: e.clientX,
-      startY: e.clientY,
-      lastX: e.clientX,
-      lastY: e.clientY,
-      isShiftDown: e.shiftKey,
-      isCtrlDown: e.ctrlKey,
-      isAltDown: e.altKey,
-      dragDistance: 0,
-      startCam: activeCamera
+      startX: x,
+      startY: y,
+      x: x,
+      y: y,
+      rect: rect,
+      modifiers,
+      startCam: activeCameraRef.current!
     };
+
+    // Add window listeners immediately when drag starts
+    window.addEventListener('mousemove', handleDragMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
     e.preventDefault();
-  }, []);
+  }, [handleDragMouseMove, handleMouseUp]);
 
-  const handleScene3dMouseUp = useCallback((e: MouseEvent) => {
-    const st = mouseState.current;
-    if(st.type === 'dragging' && st.startX !== undefined && st.startY !== undefined) {
-      if(!canvasRef.current) return;
-      const rect = canvasRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      if((st.dragDistance || 0) < 4) {
-        pickAtScreenXY(x, y, 'click');
-      }
-    }
-    mouseState.current = {type: 'idle'};
-  }, [pickAtScreenXY]);
-
-  const handleScene3dMouseLeave = useCallback(() => {
-    mouseState.current = {type: 'idle'};
-  }, []);
-
-  // Update event listener references
+  // Update canvas event listener references - only for picking and mousedown
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    canvas.addEventListener('mousemove', handleScene3dMouseMove);
+    canvas.addEventListener('mousemove', handlePickingMouseMove);
     canvas.addEventListener('mousedown', handleScene3dMouseDown);
-    canvas.addEventListener('mouseup', handleScene3dMouseUp);
-    canvas.addEventListener('mouseleave', handleScene3dMouseLeave);
 
     return () => {
-      canvas.removeEventListener('mousemove', handleScene3dMouseMove);
+      canvas.removeEventListener('mousemove', handlePickingMouseMove);
       canvas.removeEventListener('mousedown', handleScene3dMouseDown);
-      canvas.removeEventListener('mouseup', handleScene3dMouseUp);
-      canvas.removeEventListener('mouseleave', handleScene3dMouseLeave);
     };
-  }, [handleScene3dMouseMove, handleScene3dMouseDown, handleScene3dMouseUp, handleScene3dMouseLeave]);
+  }, [handlePickingMouseMove, handleScene3dMouseDown]);
 
   /******************************************************
    * F) Lifecycle & Render-on-demand
@@ -1475,17 +1465,17 @@ export function SceneInner({
         // Update textures after canvas size change
         createOrUpdateDepthTexture();
         createOrUpdatePickTextures();
-        renderFrame(activeCamera);
+        renderFrame(activeCameraRef.current!);
     }
 }, [containerWidth, containerHeight, createOrUpdateDepthTexture, createOrUpdatePickTextures, renderFrame]);
 
   // Render when camera or components change
   useEffect(() => {
     if (isReady && gpuRef.current) {
-      renderFrame(activeCamera, components);
+      renderFrame(activeCameraRef.current!, components);
       onReady();
     }
-  }, [isReady, components, activeCamera]);
+  }, [isReady, components, activeCameraRef.current]);
 
   // Wheel handling
   useEffect(() => {
@@ -1493,7 +1483,7 @@ export function SceneInner({
     if (!canvas) return;
 
     const handleWheel = (e: WheelEvent) => {
-        if (mouseState.current.type === 'idle') {
+        if (!draggingState.current) {
             e.preventDefault();
             handleCameraUpdate(cam => zoom(cam, e.deltaY));
         }
