@@ -18,6 +18,7 @@ import {
   CameraState,
   createCameraParams,
   createCameraState,
+  dolly,
   orbit,
   pan,
   roll,
@@ -1488,7 +1489,13 @@ export function SceneInner({
     const handleWheel = (e: WheelEvent) => {
         if (!draggingState.current) {
             e.preventDefault();
-            handleCameraUpdate(cam => zoom(cam, e.deltaY));
+            handleCameraUpdate(cam => {
+              if (e.shiftKey) {
+                return dolly(cam, e.deltaY);
+            } else {
+                return zoom(cam, e.deltaY);
+            }
+            })
         }
     };
 

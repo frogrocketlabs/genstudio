@@ -14,7 +14,6 @@ export interface CameraState {
     position: glMatrix.vec3;
     target: glMatrix.vec3;
     up: glMatrix.vec3;
-    radius: number;
     fov: number;
     near: number;
     far: number;
@@ -60,7 +59,6 @@ export const DEFAULT_CAMERA: CameraParams = {
 };
 
 export function createCameraState(params: CameraParams | null | undefined): CameraState {
-
     const p = {
         position: params?.position ?? DEFAULT_CAMERA.position,
         target: params?.target ?? DEFAULT_CAMERA.target,
@@ -75,18 +73,10 @@ export function createCameraState(params: CameraParams | null | undefined): Came
     const up = glMatrix.vec3.fromValues(p.up[0], p.up[1], p.up[2]);
     glMatrix.vec3.normalize(up, up);
 
-    // The direction from target to position
-    const dir = glMatrix.vec3.sub(glMatrix.vec3.create(), position, target);
-    const radius = glMatrix.vec3.length(dir);
-
-    if (radius > 1e-8) {
-        glMatrix.vec3.scale(dir, dir, 1.0 / radius);
-    }
     return {
         position,
         target,
         up,
-        radius,
         fov: p.fov,
         near: p.near,
         far: p.far
@@ -103,6 +93,15 @@ export function createCameraParams(state: CameraState): CameraParams {
         far: state.far
     };
 }
+
+/**
+ * Gets the current radius (distance from camera position to target)
+ */
+function getRadius(camera: CameraState): number {
+    const dir = glMatrix.vec3.sub(glMatrix.vec3.create(), camera.position, camera.target);
+    return glMatrix.vec3.length(dir);
+}
+
 /**
  * Orbit the camera around the target, using the camera's 'up' as the vertical axis.
  * Takes the current camera state and drag state to calculate the orbit.
@@ -111,45 +110,92 @@ export function orbit(dragState: DraggingState): CameraState {
     const deltaX = dragState.x - dragState.startX;
     const deltaY = dragState.y - dragState.startY;
 
-    const { target, up, radius } = dragState.startCam;
+    const { target, up } = dragState.startCam;
+    const radius = getRadius(dragState.startCam);
+    const useQuaternions = false; // Flag to switch between rotation methods
 
-    // Get current direction from target to camera
-    const dir = glMatrix.vec3.sub(glMatrix.vec3.create(), dragState.startCam.position, target);
-    glMatrix.vec3.normalize(dir, dir);
+    if (useQuaternions) {
+        // Get current direction from camera to target
+        const dir = glMatrix.vec3.sub(glMatrix.vec3.create(), dragState.startCam.position, target);
+        glMatrix.vec3.normalize(dir, dir);
 
-    // Get current phi (angle from up to dir)
-    const upDot = glMatrix.vec3.dot(up, dir);
-    let phi = Math.acos(clamp(upDot, -1.0, 1.0));
+        // Calculate rotation axis perpendicular to drag direction and view direction
+        const dragVector = glMatrix.vec3.fromValues(-deltaX, deltaY, 0);
+        const dragLength = glMatrix.vec3.length(dragVector);
 
-    // Get current theta (angle around up axis)
-    const { refForward, refRight } = getReferenceFrame(up);
-    const x = glMatrix.vec3.dot(dir, refRight);
-    const z = glMatrix.vec3.dot(dir, refForward);
-    let theta = Math.atan2(x, z);
+        if (dragLength > 0) {
+            // Project view direction to screen plane (z=0)
+            const screenDir = glMatrix.vec3.fromValues(dir[0], dir[1], 0);
+            glMatrix.vec3.normalize(screenDir, screenDir);
 
-    // Adjust angles based on mouse movement
-    theta -= deltaX * 0.01;
-    phi -= deltaY * 0.01;
+            // Get rotation axis perpendicular to drag and view
+            const rotationAxis = glMatrix.vec3.cross(
+                glMatrix.vec3.create(),
+                dragVector,
+                glMatrix.vec3.fromValues(0, 0, -1) // Into screen
+            );
+            glMatrix.vec3.normalize(rotationAxis, rotationAxis);
 
-    // Clamp phi to avoid gimbal lock at poles
-    phi = Math.max(0.001, Math.min(Math.PI - 0.001, phi));
+            // Create single rotation quaternion
+            const angle = dragLength * 0.01;
+            const rotation = glMatrix.quat.setAxisAngle(
+                glMatrix.quat.create(),
+                rotationAxis,
+                angle
+            );
 
-    // Compute new position in spherical coordinates
-    const sinPhi = Math.sin(phi);
-    const cosPhi = Math.cos(phi);
-    const sinTheta = Math.sin(theta);
-    const cosTheta = Math.cos(theta);
+            // Apply rotation to direction vector
+            const rotatedDir = glMatrix.vec3.transformQuat(glMatrix.vec3.create(), dir, rotation);
+            glMatrix.vec3.scale(rotatedDir, rotatedDir, radius);
 
-    const newPosition = glMatrix.vec3.create();
-    glMatrix.vec3.scaleAndAdd(newPosition, newPosition, up, cosPhi * radius);
-    glMatrix.vec3.scaleAndAdd(newPosition, newPosition, refForward, sinPhi * cosTheta * radius);
-    glMatrix.vec3.scaleAndAdd(newPosition, newPosition, refRight, sinPhi * sinTheta * radius);
-    glMatrix.vec3.add(newPosition, target, newPosition);
+            // Calculate new position
+            const newPosition = glMatrix.vec3.add(glMatrix.vec3.create(), target, rotatedDir);
 
-    return {
-        ...dragState.startCam,
-        position: newPosition
-    };
+            return {
+                ...dragState.startCam,
+                position: newPosition
+            };
+        }
+        return dragState.startCam;
+    } else {
+        // Get current direction from target to camera
+        const dir = glMatrix.vec3.sub(glMatrix.vec3.create(), dragState.startCam.position, target);
+        glMatrix.vec3.normalize(dir, dir);
+
+        // Get current phi (angle from up to dir)
+        const upDot = glMatrix.vec3.dot(up, dir);
+        let phi = Math.acos(clamp(upDot, -1.0, 1.0));
+
+        // Get current theta (angle around up axis)
+        const { refForward, refRight } = getReferenceFrame(up);
+        const x = glMatrix.vec3.dot(dir, refRight);
+        const z = glMatrix.vec3.dot(dir, refForward);
+        let theta = Math.atan2(x, z);
+
+        // Adjust angles based on mouse movement
+        theta -= deltaX * 0.01;
+        phi -= deltaY * 0.01;
+
+        // Clamp phi to avoid gimbal lock at poles
+        phi = Math.max(0.001, Math.min(Math.PI - 0.001, phi));
+
+        // Compute new position in spherical coordinates
+        const sinPhi = Math.sin(phi);
+        const cosPhi = Math.cos(phi);
+        const sinTheta = Math.sin(theta);
+        const cosTheta = Math.cos(theta);
+
+        const newPosition = glMatrix.vec3.create();
+        glMatrix.vec3.scaleAndAdd(newPosition, newPosition, up, cosPhi * radius);
+        glMatrix.vec3.scaleAndAdd(newPosition, newPosition, refForward, sinPhi * cosTheta * radius);
+        glMatrix.vec3.scaleAndAdd(newPosition, newPosition, refRight, sinPhi * sinTheta * radius);
+        glMatrix.vec3.add(newPosition, target, newPosition);
+
+        return {
+            ...dragState.startCam,
+            position: newPosition
+        };
+    }
 }
 
 /**
@@ -171,7 +217,7 @@ export function pan(dragState: DraggingState): CameraState {
     glMatrix.vec3.normalize(actualUp, actualUp);
 
     // Scale movement by distance from target
-    const scale = dragState.startCam.radius * 0.002;
+    const scale = getRadius(dragState.startCam) * 0.002;
     const movement = glMatrix.vec3.create();
 
     // Move along the local right/actualUp vectors
@@ -247,28 +293,61 @@ export function roll(dragState: DraggingState): CameraState {
 }
 
 /**
- * Zoom the camera in/out by scaling the camera's radius from the target,
- * moving the camera along the current view direction.
+ * Zoom the camera in/out by moving along the view direction while keeping the target fixed.
  */
 export function zoom(camera: CameraState, deltaY: number): CameraState {
+    // Get current distance from target
+    const direction = glMatrix.vec3.sub(glMatrix.vec3.create(), camera.position, camera.target);
+    const distance = glMatrix.vec3.length(direction);
+
     // Exponential zoom factor
-    const newRadius = Math.max(0.01, camera.radius * Math.exp(deltaY * 0.001));
+    const newDistance = Math.max(0.01, distance * Math.exp(deltaY * 0.001));
 
     // Move the camera position accordingly
-    const direction = glMatrix.vec3.sub(glMatrix.vec3.create(), camera.position, camera.target);
     glMatrix.vec3.normalize(direction, direction);
-
     const newPosition = glMatrix.vec3.scaleAndAdd(
         glMatrix.vec3.create(),
         camera.target,
         direction,
-        newRadius
+        newDistance
+    );
+
+    return {
+        ...camera,
+        position: newPosition
+    };
+}
+
+/**
+ * Move both camera and target along the view direction, creating a "fly through" effect.
+ */
+export function dolly(camera: CameraState, deltaY: number): CameraState {
+    // Get normalized view direction
+    const direction = glMatrix.vec3.sub(glMatrix.vec3.create(), camera.position, camera.target);
+    glMatrix.vec3.normalize(direction, direction);
+
+    // Calculate movement distance
+    const moveAmount = deltaY * 0.001;
+
+    // Move both position and target
+    const newPosition = glMatrix.vec3.scaleAndAdd(
+        glMatrix.vec3.create(),
+        camera.position,
+        direction,
+        moveAmount
+    );
+
+    const newTarget = glMatrix.vec3.scaleAndAdd(
+        glMatrix.vec3.create(),
+        camera.target,
+        direction,
+        moveAmount
     );
 
     return {
         ...camera,
         position: newPosition,
-        radius: newRadius
+        target: newTarget
     };
 }
 
