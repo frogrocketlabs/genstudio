@@ -19,6 +19,7 @@ import {
   createCameraParams,
   createCameraState,
   dolly,
+  adjustFov,
   orbit,
   pan,
   roll,
@@ -1349,7 +1350,7 @@ export function SceneInner({
     const st = draggingState.current;
     st.x = x;
     st.y = y;
-    if (st.button === 2 || hasModifiers(st.modifiers, ['shift'])) {
+    if (e.button === 2 || hasModifiers(st.modifiers, ['shift'])) {
       handleCameraUpdate(cam => pan(st));
     } else if (hasModifiers(st.modifiers, ['alt'])) {
       handleCameraUpdate(cam => roll(st));
@@ -1491,7 +1492,11 @@ export function SceneInner({
             e.preventDefault();
             handleCameraUpdate(cam => {
               if (e.shiftKey) {
-                return dolly(cam, e.deltaY);
+                if (e.ctrlKey) {
+                  return adjustFov(cam, e.deltaY)
+                } else {
+                  return dolly(cam, e.deltaY);
+                }
             } else {
                 return zoom(cam, e.deltaY);
             }

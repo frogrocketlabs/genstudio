@@ -351,6 +351,23 @@ export function dolly(camera: CameraState, deltaY: number): CameraState {
     };
 }
 
+/**
+ * Adjust the camera's field of view (FOV), creating a zoom-like effect that preserves perspective.
+ */
+export function adjustFov(camera: CameraState, deltaY: number): CameraState {
+    // Calculate new FOV with exponential scaling
+    const newFov = clamp(
+        camera.fov * Math.exp(deltaY * 0.001),
+        10, // Min FOV in degrees
+        120  // Max FOV in degrees
+    );
+
+    return {
+        ...camera,
+        fov: newFov
+    };
+}
+
 export function getViewMatrix(camera: CameraState): Float32Array {
     return glMatrix.mat4.lookAt(
         glMatrix.mat4.create(),
