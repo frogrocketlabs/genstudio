@@ -82,19 +82,6 @@ export function createCameraState(params: CameraParams | null | undefined): Came
     if (radius > 1e-8) {
         glMatrix.vec3.scale(dir, dir, 1.0 / radius);
     }
-
-    // We'll define phi as the angle from 'up' to 'dir'
-    // phi = 0 means camera is aligned with up
-    // phi = pi means camera is aligned opposite up
-    const upDot = glMatrix.vec3.dot(up, dir);
-    const phi = Math.acos(clamp(upDot, -1.0, 1.0));
-
-    // We also need a reference axis to measure theta around 'up'
-    const { refForward, refRight } = getReferenceFrame(up);
-    // Project dir onto this local reference plane
-    const x = glMatrix.vec3.dot(dir, refRight);
-    const z = glMatrix.vec3.dot(dir, refForward);
-
     return {
         position,
         target,
@@ -199,6 +186,63 @@ export function pan(dragState: DraggingState): CameraState {
         ...dragState.startCam,
         position: newPosition,
         target: newTarget
+    };
+}
+
+/**
+ * Roll the camera around the view direction axis.
+ * Computes the angle between the initial and current mouse positions relative to the target.
+ */
+export function roll(dragState: DraggingState): CameraState {
+    const { target, position, up } = dragState.startCam;
+    const rect = dragState.rect;
+
+    // Convert mouse coordinates to be relative to target's screen position
+    // First get view and projection matrices
+    const view = getViewMatrix(dragState.startCam);
+    const aspect = rect.width / rect.height;
+    const proj = getProjectionMatrix(dragState.startCam, aspect);
+
+    // Project target point to screen space
+    const targetScreen = glMatrix.vec4.fromValues(target[0], target[1], target[2], 1.0);
+    glMatrix.vec4.transformMat4(targetScreen, targetScreen, view);
+    glMatrix.vec4.transformMat4(targetScreen, targetScreen, proj);
+
+    // Convert to NDC and then to screen coordinates
+    // Note: For WebGPU Y is inverted compared to WebGL (+Y is down)
+    const targetX = ((targetScreen[0] / targetScreen[3] + 1) * 0.5) * rect.width;
+    const targetY = ((targetScreen[1] / targetScreen[3] + 1) * 0.5) * rect.height;
+
+    // Get vectors from target to start and current mouse positions
+    const startVec = [dragState.startX - targetX, dragState.startY - targetY];
+    const currentVec = [dragState.x - targetX, dragState.y - targetY];
+
+    // Compute angle between vectors
+    const startLen = Math.sqrt(startVec[0] * startVec[0] + startVec[1] * startVec[1]);
+    const currentLen = Math.sqrt(currentVec[0] * currentVec[0] + currentVec[1] * currentVec[1]);
+
+    if (startLen < 1e-6 || currentLen < 1e-6) return dragState.startCam;
+
+    const cosAngle = (startVec[0] * currentVec[0] + startVec[1] * currentVec[1]) / (startLen * currentLen);
+    const crossProduct = startVec[0] * currentVec[1] - startVec[1] * currentVec[0];
+    // Negate angle since WebGPU Y coordinates are flipped compared to WebGL
+    const angle = -Math.acos(clamp(cosAngle, -1, 1)) * Math.sign(crossProduct);
+
+    // Get view direction
+    const viewDir = glMatrix.vec3.sub(glMatrix.vec3.create(), target, position);
+    glMatrix.vec3.normalize(viewDir, viewDir);
+
+    // Create rotation matrix around view direction
+    const rotationMatrix = glMatrix.mat4.create();
+    glMatrix.mat4.rotate(rotationMatrix, rotationMatrix, angle, viewDir);
+
+    // Rotate up vector
+    const newUp = glMatrix.vec3.create();
+    glMatrix.vec3.transformMat4(newUp, up, rotationMatrix);
+
+    return {
+        ...dragState.startCam,
+        up: newUp
     };
 }
 

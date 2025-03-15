@@ -20,6 +20,7 @@ import {
   createCameraState,
   orbit,
   pan,
+  roll,
   zoom,
   DraggingState
 } from './camera3d'
@@ -1349,6 +1350,8 @@ export function SceneInner({
     st.y = y;
     if (st.button === 2 || hasModifiers(st.modifiers, ['shift'])) {
       handleCameraUpdate(cam => pan(st));
+    } else if (hasModifiers(st.modifiers, ['alt'])) {
+      handleCameraUpdate(cam => roll(st));
     } else if (st.button === 0) {
       handleCameraUpdate(cam => orbit(st));
     }
