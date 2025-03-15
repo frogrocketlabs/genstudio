@@ -90,6 +90,10 @@ export function useElementWidth(el) {
 }
 
 export function serializeEvent(e) {
+  if (typeof e === 'string' || typeof e === 'number' || typeof e === 'boolean') {
+    return { value: e };
+  }
+
   if (e.constructor === Object) {
     return e;
   }

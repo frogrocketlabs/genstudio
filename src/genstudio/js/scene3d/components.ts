@@ -7,9 +7,6 @@ import {
   ellipsoidVertCode,
   ellipsoidFragCode,
   ellipsoidPickingVertCode,
-  ringVertCode,
-  ringFragCode,
-  ringPickingVertCode,
   cuboidVertCode,
   cuboidFragCode,
   cuboidPickingVertCode,
@@ -27,15 +24,20 @@ import {
   LINE_BEAM_PICKING_INSTANCE_LAYOUT,
   CUBOID_INSTANCE_LAYOUT,
   CUBOID_PICKING_INSTANCE_LAYOUT,
-  RING_INSTANCE_LAYOUT,
-  RING_PICKING_INSTANCE_LAYOUT,
 } from "./shaders";
+
+import {
+  ringShaders,
+  ellipsoidAxesFragCode,
+  RING_GEOMETRY_LAYOUT,
+  RING_INSTANCE_LAYOUT,
+  RING_PICKING_INSTANCE_LAYOUT} from './components/ring'
 
 import {
   createCubeGeometry,
   createBeamGeometry,
   createSphereGeometry,
-  createTorusGeometry,
+  createEllipsoidAxes,
 } from "./geometry";
 
 import { packID } from "./picking";
@@ -251,10 +253,11 @@ function createRenderPipeline(
     bindGroupLayouts: [bindGroupLayout],
   });
 
-  // Get primitive configuration with defaults
+  // Include all values from config.primitive, including stripIndexFormat, if provided.
   const primitiveConfig = {
     topology: config.primitive?.topology || "triangle-list",
     cullMode: config.primitive?.cullMode || "back",
+    stripIndexFormat: config.primitive?.stripIndexFormat,
   };
 
   return device.createRenderPipeline({
@@ -815,10 +818,10 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
     // Use the ellipsoid index for picking
     out[outOffset + 10] = packID(baseID + elemIndex);
   },
-
   renderConfig: {
-    cullMode: "back",
-    topology: "triangle-list",
+    cullMode: "none",
+    topology: "triangle-strip",
+    stripIndexFormat: "uint16",
   },
 
   getRenderPipeline(device, bindGroupLayout, cache) {
@@ -831,11 +834,12 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
           device,
           bindGroupLayout,
           {
-            vertexShader: ringVertCode,
-            fragmentShader: ringFragCode,
-            vertexEntryPoint: "vs_main",
+            vertexShader: ringShaders,
+            fragmentShader: ellipsoidAxesFragCode,
+            vertexEntryPoint: "vs_render",
             fragmentEntryPoint: "fs_main",
-            bufferLayouts: [MESH_GEOMETRY_LAYOUT, RING_INSTANCE_LAYOUT],
+            bufferLayouts: [RING_GEOMETRY_LAYOUT, RING_INSTANCE_LAYOUT],
+            primitive: this.renderConfig
           },
           format,
           ellipsoidAxesSpec
@@ -854,11 +858,12 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
           device,
           bindGroupLayout,
           {
-            vertexShader: ringPickingVertCode,
+            vertexShader: ringShaders,
             fragmentShader: pickingFragCode,
-            vertexEntryPoint: "vs_main",
+            vertexEntryPoint: "vs_pick",
             fragmentEntryPoint: "fs_pick",
-            bufferLayouts: [MESH_GEOMETRY_LAYOUT, RING_PICKING_INSTANCE_LAYOUT],
+            bufferLayouts: [RING_GEOMETRY_LAYOUT, RING_PICKING_INSTANCE_LAYOUT],
+            primitive: this.renderConfig,
           },
           "rgba8unorm"
         );
@@ -868,7 +873,7 @@ export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
   },
 
   createGeometryResource(device) {
-    return createBuffers(device, createTorusGeometry(1.0, 0.03, 40, 12));
+    return createBuffers(device, createEllipsoidAxes(1.0, 0.1, 32, 16));
   },
 };
 

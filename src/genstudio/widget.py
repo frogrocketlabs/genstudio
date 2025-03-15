@@ -418,6 +418,7 @@ class Widget(anywidget.AnyWidget):
         f = self.callback_registry[params["id"]]
         if f is not None:
             event = replace_buffers(params["event"], buffers)
+            print(event)
             event = SubscriptableNamespace(**event)
             f(self, event)
         return "ok", []

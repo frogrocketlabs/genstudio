@@ -128,6 +128,7 @@ export interface PrimitiveSpec<ConfigType> {
     renderConfig: {
       cullMode: GPUCullMode;
       topology: GPUPrimitiveTopology;
+      stripIndexFormat?: GPUIndexFormat;
     };
 
     /**
@@ -248,6 +249,7 @@ export interface BaseComponentConfig {
     primitive?: {
       topology?: GPUPrimitiveTopology;
       cullMode?: GPUCullMode;
+      stripIndexFormat?: GPUIndexFormat;
     };
     blend?: {
       color?: GPUBlendComponent;

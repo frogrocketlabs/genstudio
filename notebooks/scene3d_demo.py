@@ -106,6 +106,14 @@ def create_demo_scene():
     scene = (
         (base_scene + controlled_camera & base_scene + controlled_camera)
         | base_scene
+        + {
+            "defaultCamera": {
+                "position": [1.388039, 0.091859, 0.189095],
+                "target": [0.000000, 0.000000, 0.000000],
+                "up": [0.000000, 1.000000, 0.000000],
+                "fov": 45,
+            }
+        }
         | Plot.initialState(
             {
                 "camera": {

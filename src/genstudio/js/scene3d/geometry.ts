@@ -25,34 +25,105 @@ export function createSphereGeometry(stacks=16, slices=24) {
   };
 }
 
-export function createTorusGeometry(majorRadius:number, minorRadius:number, majorSegments:number, minorSegments:number) {
-  const verts:number[]=[];
-  const idxs:number[]=[];
-  for(let j=0;j<=majorSegments;j++){
-    const theta=(j/majorSegments)*2*Math.PI;
-    const ct=Math.cos(theta), st=Math.sin(theta);
-    for(let i=0;i<=minorSegments;i++){
-      const phi=(i/minorSegments)*2*Math.PI;
-      const cp=Math.cos(phi), sp=Math.sin(phi);
-      const x=(majorRadius+minorRadius*cp)*ct;
-      const y=(majorRadius+minorRadius*cp)*st;
-      const z=minorRadius*sp;
-      const nx=cp*ct, ny=cp*st, nz=sp;
-      verts.push(x,y,z, nx,ny,nz);
+/**
+ * Generate tube geometry for the ellipsoid axes.
+ *
+ * @param majorRadius - The radius of the ring's centerline.
+ * @param tubeRadius - The thickness of the tube.
+ * @param majorSegments - Number of segments along the ring (u direction).
+ * @param minorSegments - Number of segments around the tube (v direction).
+ */
+export function createEllipsoidAxes(majorRadius: number, tubeRadius: number, majorSegments: number, minorSegments: number) {
+  const verts: number[] = [];
+  const idxs: number[] = [];
+
+  // Generate three rings: one for each principal plane (XY, XZ, YZ)
+  for (let ring = 0; ring < 3; ring++) {
+    const ringBaseIndex = verts.length / 9;  // now 9 floats per vertex: center (3), offset (3), normal (3)
+
+    // Loop along the ring’s centerline (u parameter)
+    for (let i = 0; i <= majorSegments; i++) {
+      const u = i / majorSegments;
+      const theta = u * 2 * Math.PI;
+
+      // Compute centerline position for the ring based on its plane.
+      let cx = 0, cy = 0, cz = 0;
+      let tangent: number[] = [0,0,0];
+      let refNormal: number[] = [0,0,0];
+
+      if (ring === 0) { // XY plane
+        cx = majorRadius * Math.cos(theta);
+        cy = majorRadius * Math.sin(theta);
+        cz = 0;
+        tangent = [-Math.sin(theta), Math.cos(theta), 0];
+        refNormal = [0, 0, 1];
+      } else if (ring === 1) { // XZ plane
+        cx = majorRadius * Math.cos(theta);
+        cy = 0;
+        cz = majorRadius * Math.sin(theta);
+        tangent = [-Math.sin(theta), 0, Math.cos(theta)];
+        refNormal = [0, 1, 0];
+      } else { // YZ plane
+        cx = 0;
+        cy = majorRadius * Math.cos(theta);
+        cz = majorRadius * Math.sin(theta);
+        tangent = [0, -Math.sin(theta), Math.cos(theta)];
+        refNormal = [1, 0, 0];
+      }
+
+      // Compute Frenet frame for the tube’s cross-section.
+      const binormal = normalize(cross(tangent, refNormal));
+      const N = normalize(cross(binormal, tangent));
+
+      // Loop around the tube's cross-section (v parameter)
+      for (let j = 0; j <= minorSegments; j++) {
+        const v = j / minorSegments;
+        const phi = v * 2 * Math.PI;
+
+        // Compute tube offset using the Frenet frame.
+        const offX = tubeRadius * (Math.cos(phi) * N[0] + Math.sin(phi) * binormal[0]);
+        const offY = tubeRadius * (Math.cos(phi) * N[1] + Math.sin(phi) * binormal[1]);
+        const offZ = tubeRadius * (Math.cos(phi) * N[2] + Math.sin(phi) * binormal[2]);
+
+        // The vertex normal is the normalized tube offset.
+        const n = normalize([offX, offY, offZ]);
+
+        // Store centerline coordinate and offset as separate attributes.
+        verts.push(cx, cy, cz,    // centerline position (3 floats)
+                   offX, offY, offZ, // tube offset (3 floats)
+                   n[0], n[1], n[2]); // normal (3 floats)
+      }
+    }
+
+    // Build indices for a grid of (majorSegments+1) x (minorSegments+1) vertices.
+    for (let i = 0; i < majorSegments; i++) {
+      for (let j = 0; j < minorSegments; j++) {
+        const current = ringBaseIndex + i * (minorSegments + 1) + j;
+        const next = current + (minorSegments + 1);
+        // Two triangles per quad.
+        idxs.push(current, next, current + 1);
+        idxs.push(current + 1, next, next + 1);
+      }
     }
   }
-  for(let j=0;j<majorSegments;j++){
-    const row1=j*(minorSegments+1);
-    const row2=(j+1)*(minorSegments+1);
-    for(let i=0;i<minorSegments;i++){
-      const a=row1+i, b=row1+i+1, c=row2+i, d=row2+i+1;
-      idxs.push(a,b,c, b,d,c);
-    }
-  }
+
   return {
     vertexData: new Float32Array(verts),
     indexData: new Uint16Array(idxs)
   };
+}
+
+function cross(a: number[], b: number[]): number[] {
+  return [
+    a[1]*b[2] - a[2]*b[1],
+    a[2]*b[0] - a[0]*b[2],
+    a[0]*b[1] - a[1]*b[0]
+  ];
+}
+
+function normalize(v: number[]): number[] {
+  const len = Math.hypot(v[0], v[1], v[2]);
+  return len > 0 ? [v[0] / len, v[1] / len, v[2] / len] : [0, 0, 0];
 }
 
 export function createCubeGeometry() {
