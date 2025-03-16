@@ -341,27 +341,3 @@ export interface BufferInfo {
     start: number;        // The first instance index in the combined buffer for this component.
     count: number;        // How many instances this component contributed.
   }
-
-export interface EllipsoidComponentConfig extends BaseComponentConfig {
-  type: 'Ellipsoid' | 'EllipsoidAxes';
-  centers: Float32Array | number[];
-  half_sizes?: Float32Array | number[];
-  half_size?: [number, number, number] | number;
-  quaternions?: Float32Array | number[];
-  quaternion?: [number, number, number, number];
-  colors?: Float32Array | number[];
-  color?: [number, number, number];
-  alphas?: Float32Array | number[];
-  alpha?: number;
-  fill_mode?: 'Solid' | 'MajorWireframe' | 'DenseWireframe';
-}
-
-// Remove EllipsoidAxesComponentConfig since it's merged into EllipsoidComponentConfig
-
-/** ===================== UNION TYPE FOR ALL COMPONENT CONFIGS ===================== **/
-
-export type ComponentConfig =
-  | PointCloudComponentConfig
-  | EllipsoidComponentConfig
-  | CuboidComponentConfig
-  | LineBeamsComponentConfig;

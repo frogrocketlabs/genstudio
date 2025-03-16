@@ -29,8 +29,8 @@ import {
 
 import isEqual from 'lodash-es/isEqual';
 
-
-import { ComponentConfig, cuboidSpec, ellipsoidAxesSpec, ellipsoidSpec, lineBeamsSpec, pointCloudSpec, buildPickingData, buildRenderData } from './components';
+import {ellipsoidAxesSpec} from './components/ring'
+import { ComponentConfig, cuboidSpec, ellipsoidSpec, lineBeamsSpec, pointCloudSpec, buildPickingData, buildRenderData } from './components';
 import { unpackID } from './picking';
 import { LIGHTING } from './shaders';
 import { BufferInfo, GeometryResources, GeometryResource, PrimitiveSpec, RenderObject, PipelineCacheEntry, DynamicBuffers, RenderObjectCache, ComponentOffset } from './types';

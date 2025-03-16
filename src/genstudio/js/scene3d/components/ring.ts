@@ -3,8 +3,25 @@ import {createVertexBufferLayout,
         cameraStruct,
         lightingConstants,
         lightingCalc,
-        pickingVSOut
+        pickingVSOut,
+        pickingFragCode
 } from '../shaders';
+
+import {PrimitiveSpec} from "../types";
+
+import { fillAlpha,
+    fillColor,
+    applyDecoration,
+    EllipsoidComponentConfig,
+    getOrCreatePipeline,
+    createRenderPipeline,
+    createBuffers,
+    createTranslucentGeometryPipeline } from '../components';
+
+import { packID } from "../picking";
+import {acopy} from '../../utils'
+
+import {createEllipsoidAxes} from "../geometry";
 
 export const RING_INSTANCE_LAYOUT = createVertexBufferLayout([
     [3, 'float32x3'], // instance center position
@@ -103,7 +120,7 @@ export const RING_INSTANCE_LAYOUT = createVertexBufferLayout([
     return out;
   }`;
 
-  export const ellipsoidAxesFragCode = /*wgsl*/`
+  export const ringFragCode = /*wgsl*/`
   ${cameraStruct}
   ${lightingConstants}
   ${lightingCalc}
@@ -118,3 +135,153 @@ export const RING_INSTANCE_LAYOUT = createVertexBufferLayout([
     let litColor = calculateLighting(color, normal, worldPos);
     return vec4<f32>(litColor, alpha);
   }`;
+
+  export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
+    type: "EllipsoidAxes",
+
+    defaults: {
+      half_size: [0.5, 0.5, 0.5],
+      quaternion: [0, 0, 0, 1],
+    },
+
+    // Return the number of ellipsoids (elements), not instances
+    getElementCount(elem) {
+      return elem.centers.length / 3;
+    },
+
+    floatsPerInstance: 14, // position(3) + size(3) + quat(4) + color(3) + alpha(1) = 14 per ring
+
+    floatsPerPicking: 11, // same layout as Ellipsoid: 11 per ring
+
+    // This tells the system we have 3 instances per element
+    instancesPerElement: 3,
+
+    // Return centers for the elements (not instances)
+    getCenters(elem) {
+      // Just return the original centers - one per element
+      return elem.centers;
+    },
+
+    // Fill render geometry for a single instance
+    fillRenderGeometry(constants, elem, elemIndex, out, outIndex) {
+      const outOffset = outIndex * this.floatsPerInstance;
+
+      // Position
+      acopy(elem.centers, elemIndex * 3, out, outOffset, 3);
+
+      // Half sizes
+      if (constants.half_size) {
+        acopy(constants.half_size as ArrayLike<number>, 0, out, outOffset + 3, 3);
+      } else {
+        acopy(elem.half_sizes!, elemIndex * 3, out, outOffset + 3, 3);
+      }
+
+      // Quaternion
+      if (constants.quaternion) {
+        acopy(constants.quaternion, 0, out, outOffset + 6, 4);
+      } else {
+        acopy(elem.quaternions!, elemIndex * 4, out, outOffset + 6, 4);
+      }
+
+      // The shader will handle the ring orientation based on instance_index
+
+      fillAlpha(this, constants, elem, elemIndex, out, outOffset)
+      fillColor(this, constants, elem, elemIndex, out, outOffset)
+    },
+
+    colorOffset: 10,
+    alphaOffset: 13,
+
+    applyDecoration(dec, out, outIndex, floatsPerInstance) {
+      // outIndex is already the instance index, so we can just apply the decoration directly
+      applyDecoration(this, dec, out, outIndex * floatsPerInstance);
+    },
+
+    applyDecorationScale(out, offset, scaleFactor) {
+      out[offset + 3] *= scaleFactor;
+      out[offset + 4] *= scaleFactor;
+      out[offset + 5] *= scaleFactor;
+    },
+
+    fillPickingGeometry(constants, elem, elemIndex, out, outIndex, baseID) {
+      const outOffset = outIndex * this.floatsPerPicking;
+
+      // Position
+      acopy(elem.centers, elemIndex * 3, out, outOffset, 3);
+
+      // Half sizes
+      if (constants.half_size) {
+        acopy(constants.half_size as ArrayLike<number>, 0, out, outOffset + 3, 3);
+      } else {
+        acopy(elem.half_sizes!, elemIndex * 3, out, outOffset + 3, 3);
+      }
+
+      // Quaternion
+      if (constants.quaternion) {
+        acopy(constants.quaternion, 0, out, outOffset + 6, 4);
+      } else {
+        acopy(elem.quaternions!, elemIndex * 4, out, outOffset + 6, 4);
+      }
+
+      // The shader will handle the ring orientation based on instance_index
+
+      // Use the ellipsoid index for picking
+      out[outOffset + 10] = packID(baseID + elemIndex);
+    },
+    renderConfig: {
+      cullMode: "back",
+      topology: "triangle-list"
+    },
+
+    getRenderPipeline(device, bindGroupLayout, cache) {
+      const format = navigator.gpu.getPreferredCanvasFormat();
+      return getOrCreatePipeline(
+        device,
+        "EllipsoidAxesShading",
+        () => {
+          return createTranslucentGeometryPipeline(
+            device,
+            bindGroupLayout,
+            {
+              vertexShader: ringShaders,
+              fragmentShader: ringFragCode,
+              vertexEntryPoint: "vs_render",
+              fragmentEntryPoint: "fs_main",
+              bufferLayouts: [RING_GEOMETRY_LAYOUT, RING_INSTANCE_LAYOUT],
+              primitive: this.renderConfig
+            },
+            format,
+            ellipsoidAxesSpec
+          );
+        },
+        cache
+      );
+    },
+
+    getPickingPipeline(device, bindGroupLayout, cache) {
+      return getOrCreatePipeline(
+        device,
+        "EllipsoidAxesPicking",
+        () => {
+          return createRenderPipeline(
+            device,
+            bindGroupLayout,
+            {
+              vertexShader: ringShaders,
+              fragmentShader: pickingFragCode,
+              vertexEntryPoint: "vs_pick",
+              fragmentEntryPoint: "fs_pick",
+              bufferLayouts: [RING_GEOMETRY_LAYOUT, RING_PICKING_INSTANCE_LAYOUT],
+              primitive: this.renderConfig,
+            },
+            "rgba8unorm"
+          );
+        },
+        cache
+      );
+    },
+
+    createGeometryResource(device) {
+      return createBuffers(device, createEllipsoidAxes(1.0, 0.05, 32, 16));
+    },
+  };

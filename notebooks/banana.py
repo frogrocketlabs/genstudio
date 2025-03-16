@@ -22,7 +22,7 @@ def render_gaussians(bananas):
     return (
         Ellipsoid(
             centers=bananas["xyz"],
-            half_sizes=bananas["half_sizes"] * 2.5,
+            half_sizes=bananas["half_sizes"],
             quaternions=bananas["quaternions"],
             colors=bananas["colors"],
             fill_mode="MajorWireframe",

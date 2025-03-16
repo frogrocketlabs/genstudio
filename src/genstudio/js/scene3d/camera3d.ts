@@ -54,7 +54,7 @@ export const DEFAULT_CAMERA: CameraParams = {
     target: [0, 0, 0],
     up: [0, 1, 0],
     fov: 45,  // Slightly narrower FOV for better perspective
-    near: 0.01,
+    near: 0.001,
     far: 100.0
 };
 

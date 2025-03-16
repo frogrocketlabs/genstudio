@@ -27,17 +27,9 @@ import {
 } from "./shaders";
 
 import {
-  ringShaders,
-  ellipsoidAxesFragCode,
-  RING_GEOMETRY_LAYOUT,
-  RING_INSTANCE_LAYOUT,
-  RING_PICKING_INSTANCE_LAYOUT} from './components/ring'
-
-import {
   createCubeGeometry,
   createBeamGeometry,
-  createSphereGeometry,
-  createEllipsoidAxes,
+  createSphereGeometry
 } from "./geometry";
 
 import { packID } from "./picking";
@@ -52,6 +44,8 @@ import {
   GeometryData,
   ElementConstants,
 } from "./types";
+
+import {acopy} from '../utils'
 
 /** ===================== DECORATIONS + COMMON UTILS ===================== **/
 
@@ -82,16 +76,9 @@ function applyDecorations(
   }
 }
 
-
-function acopy(source: ArrayLike<number>, sourceI: number, out: ArrayLike<number> & { [n: number]: number }, outI: number, n: number) {
-  for (let i = 0; i < n; i++) {
-    out[outI + i] = source[sourceI + i];
-  }
-}
-
 /** ===================== MINI-FRAMEWORK FOR RENDER/PICK DATA ===================== **/
 /** Helper function to fill color from constants or element array */
-function fillColor(spec: PrimitiveSpec<any>, constants: ElementConstants, elem: BaseComponentConfig, elemIndex: number, out: Float32Array, outOffset: number) {
+export function fillColor(spec: PrimitiveSpec<any>, constants: ElementConstants, elem: BaseComponentConfig, elemIndex: number, out: Float32Array, outOffset: number) {
   if (constants.color) {
     acopy(constants.color, 0, out, outOffset + spec.colorOffset, 3);
   } else {
@@ -100,11 +87,11 @@ function fillColor(spec: PrimitiveSpec<any>, constants: ElementConstants, elem: 
 }
 
 /** Helper function to fill alpha from constants or element array */
-function fillAlpha(spec: PrimitiveSpec<any>, constants: ElementConstants, elem: BaseComponentConfig, elemIndex: number, out: Float32Array, outOffset: number) {
+export function fillAlpha(spec: PrimitiveSpec<any>, constants: ElementConstants, elem: BaseComponentConfig, elemIndex: number, out: Float32Array, outOffset: number) {
   out[outOffset + spec.alphaOffset] = constants.alpha || elem.alphas![elemIndex];
 }
 
-function applyDecoration(
+export function applyDecoration(
   spec: PrimitiveSpec<any>,
   dec: Decoration,
   out: Float32Array,
@@ -226,7 +213,7 @@ export function buildPickingData<ConfigType extends BaseComponentConfig>(
 
 /** ===================== GPU PIPELINE HELPERS (unchanged) ===================== **/
 
-function getOrCreatePipeline(
+export function getOrCreatePipeline(
   device: GPUDevice,
   key: string,
   createFn: () => GPURenderPipeline,
@@ -243,7 +230,7 @@ function getOrCreatePipeline(
   return pipeline;
 }
 
-function createRenderPipeline(
+export function createRenderPipeline(
   device: GPUDevice,
   bindGroupLayout: GPUBindGroupLayout,
   config: PipelineConfig,
@@ -298,7 +285,7 @@ function createRenderPipeline(
   });
 }
 
-function createTranslucentGeometryPipeline(
+export function createTranslucentGeometryPipeline(
   device: GPUDevice,
   bindGroupLayout: GPUBindGroupLayout,
   config: PipelineConfig,
@@ -333,7 +320,7 @@ function createTranslucentGeometryPipeline(
   );
 }
 
-const createBuffers = (
+export const createBuffers = (
   device: GPUDevice,
   { vertexData, indexData }: GeometryData
 ): GeometryResource => {
@@ -724,158 +711,6 @@ export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
   },
 };
 
-/** ===================== ELLIPSOID AXES (3 rings) ===================== **/
-
-export const ellipsoidAxesSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
-  type: "EllipsoidAxes",
-
-  defaults: {
-    half_size: [0.5, 0.5, 0.5],
-    quaternion: [0, 0, 0, 1],
-  },
-
-  // Return the number of ellipsoids (elements), not instances
-  getElementCount(elem) {
-    return elem.centers.length / 3;
-  },
-
-  floatsPerInstance: 14, // position(3) + size(3) + quat(4) + color(3) + alpha(1) = 14 per ring
-
-  floatsPerPicking: 11, // same layout as Ellipsoid: 11 per ring
-
-  // This tells the system we have 3 instances per element
-  instancesPerElement: 3,
-
-  // Return centers for the elements (not instances)
-  getCenters(elem) {
-    // Just return the original centers - one per element
-    return elem.centers;
-  },
-
-  // Fill render geometry for a single instance
-  fillRenderGeometry(constants, elem, elemIndex, out, outIndex) {
-    const outOffset = outIndex * this.floatsPerInstance;
-
-    // Position
-    acopy(elem.centers, elemIndex * 3, out, outOffset, 3);
-
-    // Half sizes
-    if (constants.half_size) {
-      acopy(constants.half_size as ArrayLike<number>, 0, out, outOffset + 3, 3);
-    } else {
-      acopy(elem.half_sizes!, elemIndex * 3, out, outOffset + 3, 3);
-    }
-
-    // Quaternion
-    if (constants.quaternion) {
-      acopy(constants.quaternion, 0, out, outOffset + 6, 4);
-    } else {
-      acopy(elem.quaternions!, elemIndex * 4, out, outOffset + 6, 4);
-    }
-
-    // The shader will handle the ring orientation based on instance_index
-
-    fillAlpha(this, constants, elem, elemIndex, out, outOffset)
-    fillColor(this, constants, elem, elemIndex, out, outOffset)
-  },
-
-  colorOffset: 10,
-  alphaOffset: 13,
-
-  applyDecoration(dec, out, outIndex, floatsPerInstance) {
-    // outIndex is already the instance index, so we can just apply the decoration directly
-    applyDecoration(this, dec, out, outIndex * floatsPerInstance);
-  },
-
-  applyDecorationScale(out, offset, scaleFactor) {
-    out[offset + 3] *= scaleFactor;
-    out[offset + 4] *= scaleFactor;
-    out[offset + 5] *= scaleFactor;
-  },
-
-  fillPickingGeometry(constants, elem, elemIndex, out, outIndex, baseID) {
-    const outOffset = outIndex * this.floatsPerPicking;
-
-    // Position
-    acopy(elem.centers, elemIndex * 3, out, outOffset, 3);
-
-    // Half sizes
-    if (constants.half_size) {
-      acopy(constants.half_size as ArrayLike<number>, 0, out, outOffset + 3, 3);
-    } else {
-      acopy(elem.half_sizes!, elemIndex * 3, out, outOffset + 3, 3);
-    }
-
-    // Quaternion
-    if (constants.quaternion) {
-      acopy(constants.quaternion, 0, out, outOffset + 6, 4);
-    } else {
-      acopy(elem.quaternions!, elemIndex * 4, out, outOffset + 6, 4);
-    }
-
-    // The shader will handle the ring orientation based on instance_index
-
-    // Use the ellipsoid index for picking
-    out[outOffset + 10] = packID(baseID + elemIndex);
-  },
-  renderConfig: {
-    cullMode: "none",
-    topology: "triangle-strip",
-    stripIndexFormat: "uint16",
-  },
-
-  getRenderPipeline(device, bindGroupLayout, cache) {
-    const format = navigator.gpu.getPreferredCanvasFormat();
-    return getOrCreatePipeline(
-      device,
-      "EllipsoidAxesShading",
-      () => {
-        return createTranslucentGeometryPipeline(
-          device,
-          bindGroupLayout,
-          {
-            vertexShader: ringShaders,
-            fragmentShader: ellipsoidAxesFragCode,
-            vertexEntryPoint: "vs_render",
-            fragmentEntryPoint: "fs_main",
-            bufferLayouts: [RING_GEOMETRY_LAYOUT, RING_INSTANCE_LAYOUT],
-            primitive: this.renderConfig
-          },
-          format,
-          ellipsoidAxesSpec
-        );
-      },
-      cache
-    );
-  },
-
-  getPickingPipeline(device, bindGroupLayout, cache) {
-    return getOrCreatePipeline(
-      device,
-      "EllipsoidAxesPicking",
-      () => {
-        return createRenderPipeline(
-          device,
-          bindGroupLayout,
-          {
-            vertexShader: ringShaders,
-            fragmentShader: pickingFragCode,
-            vertexEntryPoint: "vs_pick",
-            fragmentEntryPoint: "fs_pick",
-            bufferLayouts: [RING_GEOMETRY_LAYOUT, RING_PICKING_INSTANCE_LAYOUT],
-            primitive: this.renderConfig,
-          },
-          "rgba8unorm"
-        );
-      },
-      cache
-    );
-  },
-
-  createGeometryResource(device) {
-    return createBuffers(device, createEllipsoidAxes(1.0, 0.1, 32, 16));
-  },
-};
 
 /** ===================== CUBOID ===================== **/
 

@@ -262,3 +262,9 @@ export function useShallowMemo<T>(value: T): T {
 
   return ref.current;
 }
+
+export function acopy(source: ArrayLike<number>, sourceI: number, out: ArrayLike<number> & { [n: number]: number }, outI: number, n: number) {
+  for (let i = 0; i < n; i++) {
+    out[outI + i] = source[sourceI + i];
+  }
+}
