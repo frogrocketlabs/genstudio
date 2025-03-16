@@ -24,7 +24,7 @@ export interface PrimitiveSpec<ConfigType> {
      * Number of instances created per element. Defaults to 1 if not specified.
      * Used when a single logical element maps to multiple render instances.
      */
-    instancesPerElement?: number;
+    instancesPerElement: number;
 
     /**
      * Number of floats needed per instance for render data.
@@ -302,7 +302,6 @@ export interface BufferInfo {
     pickingIndexBuffer?: GPUBuffer;
     pickingVertexCount?: number;
     pickingIndexCount?: number;
-    pickingInstanceCount?: number;
 
     componentIndex: number;
     pickingDataStale: boolean;
@@ -310,7 +309,7 @@ export interface BufferInfo {
     // Arrays owned by this RenderObject, reallocated only when count changes
     cachedRenderData: Float32Array;   // Make non-optional since all components must have render data
     cachedPickingData: Float32Array;  // Make non-optional since all components must have picking data
-    lastRenderCount: number;          // Make non-optional since we always need to track this
+    lastElementRenderCount: number;          // Make non-optional since we always need to track this
 
     // Temporary sorting state
     sortedIndices?: Uint32Array;
@@ -339,5 +338,5 @@ export interface BufferInfo {
   export interface ComponentOffset {
     componentIdx: number; // The index of the component in your overall component list.
     start: number;        // The first instance index in the combined buffer for this component.
-    count: number;        // How many instances this component contributed.
+    elementCount: number;        // How many instances this component contributed.
   }

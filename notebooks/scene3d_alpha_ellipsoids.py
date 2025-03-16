@@ -1,5 +1,5 @@
 import numpy as np
-from genstudio.scene3d import Ellipsoid, Cuboid
+from genstudio.scene3d import Ellipsoid, Cuboid, deco
 import genstudio.plot as Plot
 import math
 from genstudio.plot import js
@@ -155,7 +155,7 @@ cuboid_scene
 
 
 def create_animated_clusters_scene(
-    n_frames=60, n_clusters=15, n_ellipsoids_per_cluster=1000
+    n_frames=1, n_clusters=15, n_ellipsoids_per_cluster=1000
 ):
     """Create an animated scene where cluster centers stay fixed but members regenerate each frame.
 
@@ -216,8 +216,16 @@ def create_animated_clusters_scene(
         Ellipsoid(
             centers=js("$state.centers[$state.frame]"),
             colors=js("$state.colors[$state.frame]"),
-            alphas=js("$state.alphas[$state.frame]"),
+            # alphas=js("$state.alphas[$state.frame]"),
+            alpha=0.5,
             half_sizes=js("$state.half_sizes[$state.frame]"),
+            onHover=js("(i) => $state.update({hovered: i})"),
+            decorations=[
+                deco(
+                    js("typeof $state.hovered === 'number' ? [$state.hovered] : []"),
+                    color=[1, 0, 0],
+                )
+            ],
         )
         + {"controls": ["fps"]}
         | Plot.Slider("frame", 0, range=n_frames, fps="raf")

@@ -412,6 +412,7 @@ export interface PointCloudComponentConfig extends BaseComponentConfig {
 
 export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
   type: "PointCloud",
+  instancesPerElement: 1,
 
   defaults: {
     size: 0.02,
@@ -566,6 +567,7 @@ export interface EllipsoidComponentConfig extends BaseComponentConfig {
 
 export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
   type: "Ellipsoid",
+  instancesPerElement: 1,
 
   defaults: {
     half_size: [0.5, 0.5, 0.5],
@@ -725,6 +727,7 @@ export interface CuboidComponentConfig extends BaseComponentConfig {
 
 export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
   type: "Cuboid",
+  instancesPerElement: 1,
 
   defaults: {
     half_size: [0.1, 0.1, 0.1],
@@ -902,6 +905,7 @@ function countSegments(elem: LineBeamsComponentConfig): number {
 
 export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
   type: "LineBeams",
+  instancesPerElement: 1,
 
   defaults: {
     size: 0.02
