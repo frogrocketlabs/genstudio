@@ -4,9 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Bitmap } from '../../src/genstudio/js/components/bitmap';
 import { $StateContext } from '../../src/genstudio/js/context';
 
-// Mock the useContainerWidth hook
+// Mock the useContainerWidth hook with a function that can be customized per test
+const mockUseContainerWidth = vi.fn(() => [React.createRef(), 500]);
 vi.mock('../../src/genstudio/js/utils', () => ({
-  useContainerWidth: () => [React.createRef(), 500]
+  useContainerWidth: () => mockUseContainerWidth()
 }));
 
 // Mock ImageData if not available in test environment
@@ -22,16 +23,19 @@ if (typeof ImageData === 'undefined') {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  mockUseContainerWidth.mockReturnValue([React.createRef(), 500]);
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  mockUseContainerWidth.mockReset();
 });
 
 describe('Bitmap Component', () => {
   // Mock canvas and context
   const mockGetContext = vi.fn();
   const mockPutImageData = vi.fn();
+  const mockDrawImage = vi.fn();
   const mockDone = vi.fn();
   const mockBeginUpdate = vi.fn().mockReturnValue(mockDone);
 
@@ -44,17 +48,79 @@ describe('Bitmap Component', () => {
     // Reset mocks
     mockGetContext.mockReset();
     mockPutImageData.mockReset();
+    mockDrawImage.mockReset();
     mockBeginUpdate.mockReset();
     mockDone.mockReset();
     mockBeginUpdate.mockReturnValue(mockDone);
 
     // Setup canvas mock
     mockGetContext.mockReturnValue({
-      putImageData: mockPutImageData
+      putImageData: mockPutImageData,
+      drawImage: mockDrawImage,
+      imageSmoothingEnabled: false
     });
 
     // Mock HTMLCanvasElement
     global.HTMLCanvasElement.prototype.getContext = mockGetContext;
+  });
+
+  it('should use original dimensions when containerWidth <= width * 2', () => {
+    // Set container width to be exactly 2x the bitmap width
+    mockUseContainerWidth.mockReturnValue([React.createRef(), 200]);
+
+    const pixels = new Uint8Array(12);
+    const { container } = render(
+      <$StateContext.Provider value={defaultStateContext}>
+        <Bitmap pixels={pixels} width={100} height={50} interpolation="nearest" />
+      </$StateContext.Provider>
+    );
+
+    const canvas = container.querySelector('canvas');
+    expect(canvas).toBeTruthy();
+    expect(canvas.style.width).toBe('200px');
+    expect(canvas.width).toBe(100); // Should use original width
+    expect(canvas.height).toBe(50); // Should use original height
+    expect(mockPutImageData).toHaveBeenCalled();
+    expect(mockDrawImage).not.toHaveBeenCalled();
+  });
+
+  it('should use high resolution canvas when containerWidth > width * 2', () => {
+    // Set container width to be more than 2x the bitmap width
+    mockUseContainerWidth.mockReturnValue([React.createRef(), 250]);
+
+    const pixels = new Uint8Array(12);
+    const { container } = render(
+      <$StateContext.Provider value={defaultStateContext}>
+        <Bitmap pixels={pixels} width={100} height={50} interpolation="nearest" />
+      </$StateContext.Provider>
+    );
+
+    const canvas = container.querySelector('canvas');
+    expect(canvas).toBeTruthy();
+    expect(canvas.style.width).toBe('250px');
+    expect(canvas.width).toBe(500); // Should be 2x the display width
+    expect(canvas.height).toBe(250); // Should maintain aspect ratio
+    expect(mockDrawImage).toHaveBeenCalled();
+  });
+
+  it('should use original dimensions for bilinear interpolation regardless of size', () => {
+    mockUseContainerWidth.mockReturnValue([React.createRef(), 1000]); // Much larger than bitmap
+
+    const pixels = new Uint8Array(12);
+    const { container } = render(
+      <$StateContext.Provider value={defaultStateContext}>
+        <Bitmap pixels={pixels} width={100} height={50} interpolation="bilinear" />
+      </$StateContext.Provider>
+    );
+
+    const canvas = container.querySelector('canvas');
+    expect(canvas).toBeTruthy();
+    expect(canvas.style.width).toBe('1000px');
+    expect(canvas.width).toBe(100); // Should use original width
+    expect(canvas.height).toBe(50); // Should use original height
+    expect(canvas.style.imageRendering).toBe('auto');
+    expect(mockPutImageData).toHaveBeenCalled();
+    expect(mockDrawImage).not.toHaveBeenCalled();
   });
 
   it('should render a canvas element', () => {
@@ -151,21 +217,6 @@ describe('Bitmap Component', () => {
     expect(rgba[5]).toBe(255);  // G
     expect(rgba[6]).toBe(0);    // B
     expect(rgba[7]).toBe(255);  // A (preserved)
-  });
-
-  it('should apply container width to canvas style', () => {
-    const pixels = new Uint8Array(12);
-    const { container } = render(
-      <$StateContext.Provider value={defaultStateContext}>
-        <Bitmap pixels={pixels} width={100} height={50} />
-      </$StateContext.Provider>
-    );
-
-    const canvas = container.querySelector('canvas');
-    expect(canvas).toBeTruthy();
-    expect(canvas.style.width).toBe('500px'); // From mocked useContainerWidth
-    expect(canvas.width).toBe(100);
-    expect(canvas.height).toBe(50);
   });
 
   it('should call beginUpdate and done from state context', async () => {
