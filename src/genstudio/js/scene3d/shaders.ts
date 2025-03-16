@@ -7,7 +7,7 @@ import { quaternionShaderFunctions } from './quaternion';
  */
 export const LIGHTING = {
     /** Ambient light intensity, affects overall scene brightness */
-    AMBIENT_INTENSITY: 0.4,
+    AMBIENT_INTENSITY: 0.55,
 
     /** Diffuse light intensity, affects surface shading based on light direction */
     DIFFUSE_INTENSITY: 0.6,
@@ -27,9 +27,6 @@ export const LIGHTING = {
         /** Forward component of light direction */
         FORWARD: 0,
     },
-
-    /** Default tube thickness for ellipsoid axes as a fraction of mean size */
-    TUBE_THICKNESS: 0.02
 } as const;
 
 // Common shader code templates

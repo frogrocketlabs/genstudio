@@ -22,7 +22,7 @@ def render_gaussians(bananas):
     return (
         Ellipsoid(
             centers=bananas["xyz"],
-            half_sizes=bananas["half_sizes"],
+            half_sizes=bananas["half_sizes"] * 2.5,
             quaternions=bananas["quaternions"],
             colors=bananas["colors"],
             fill_mode="MajorWireframe",
@@ -30,7 +30,7 @@ def render_gaussians(bananas):
         + {
             "camera": Plot.ref(
                 {
-                    "position": [0.045741, 0.137745, 0.362853],
+                    "position": [0.106653, 0.085635, 0.135901],
                     "target": [0.000000, 0.000000, 0.000000],
                     "up": [0.000000, 1.000000, 0.000000],
                     "fov": 45,
@@ -43,4 +43,4 @@ def render_gaussians(bananas):
     #
 
 
-render_gaussians(banana_gaussians[0])
+Plot.Row(*[render_gaussians(g) for g in banana_gaussians])
