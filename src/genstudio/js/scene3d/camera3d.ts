@@ -422,3 +422,11 @@ function getReferenceFrame(up: glMatrix.vec3): {
 function clamp(x: number, minVal: number, maxVal: number): number {
     return Math.max(minVal, Math.min(x, maxVal));
 }
+
+export function hasCameraMoved(current: glMatrix.vec3, last: glMatrix.vec3 | undefined, threshold: number): boolean {
+    if (!last) return true;
+    const dx = current[0] - last[0];
+    const dy = current[1] - last[1];
+    const dz = current[2] - last[2];
+    return (dx * dx + dy * dy + dz * dz) > threshold;
+  }

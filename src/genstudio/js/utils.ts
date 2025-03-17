@@ -231,27 +231,47 @@ export function joinClasses(...classes) {
  * All other types (including TypedArrays) are compared by identity.
  */
 export function deepEqualModuloTypedArrays(a: any, b: any): boolean {
+    // Identity check handles primitives and references
     if (a === b) return true;
 
-    // Check if both are arrays OR both are plain objects
-    const aIsArray = Array.isArray(a);
-    const bIsArray = Array.isArray(b);
-    const aIsPlainObj = a && a.constructor === Object && Object.getPrototypeOf(a) === Object.prototype;
-    const bIsPlainObj = b && b.constructor === Object && Object.getPrototypeOf(b) === Object.prototype;
-
-    if ((aIsArray && bIsArray) || (aIsPlainObj && bIsPlainObj)) {
-        const keys = Object.keys(a);
-        if (keys.length !== Object.keys(b).length) return false;
-
-        return keys.every(key => (
-            Object.prototype.hasOwnProperty.call(b, key) &&
-            deepEqualModuloTypedArrays(a[key], b[key])
-        ));
+    // If either is null/undefined or not an object, we already know they're not equal
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') {
+        return false;
     }
 
-    return a === b;
-}
+    // Handle arrays
+    if (Array.isArray(a) && Array.isArray(b)) {
+        if (a.length !== b.length) {
+            return false;
+        }
+        for (let i = 0; i < a.length; i++) {
+            if (!deepEqualModuloTypedArrays(a[i], b[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
 
+    // Handle plain objects only
+    if (a.constructor === Object && b.constructor === Object) {
+        const keys = Object.keys(a);
+        if (keys.length !== Object.keys(b).length) {
+            return false;
+        }
+        for (const key of keys) {
+            if (!Object.prototype.hasOwnProperty.call(b, key)) {
+                return false;
+            }
+            if (!deepEqualModuloTypedArrays(a[key], b[key])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // All other types are compared by identity (which was false)
+    return false;
+}
 
 export function useShallowMemo<T>(value: T): T {
   const ref = useRef<T>();

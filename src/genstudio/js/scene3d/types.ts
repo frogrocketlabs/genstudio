@@ -290,34 +290,30 @@ export interface BufferInfo {
   }
 
   export interface RenderObject {
-    pipeline?: GPURenderPipeline;
-    vertexBuffers: Partial<[GPUBuffer, BufferInfo]>;  // Allow empty or partial arrays
-    indexBuffer?: GPUBuffer;
-    vertexCount?: number;
-    indexCount?: number;
-    instanceCount?: number;
+    pipeline: GPURenderPipeline;
+    geometryBuffer: GPUBuffer;
+    instanceBuffer: BufferInfo;
+    indexBuffer: GPUBuffer;
+    indexCount: number;
+    instanceCount: number;
+    vertexCount: number;
 
-    pickingPipeline?: GPURenderPipeline;
-    pickingVertexBuffers: Partial<[GPUBuffer, BufferInfo]>;  // Allow empty or partial arrays
-    pickingIndexBuffer?: GPUBuffer;
-    pickingVertexCount?: number;
-    pickingIndexCount?: number;
+    pickingPipeline: GPURenderPipeline;
+    pickingInstanceBuffer: BufferInfo;
 
     componentIndex: number;
     pickingDataStale: boolean;
 
     // Arrays owned by this RenderObject, reallocated only when count changes
-    cachedRenderData: Float32Array;   // Make non-optional since all components must have render data
-    cachedPickingData: Float32Array;  // Make non-optional since all components must have picking data
-    lastElementRenderCount: number;          // Make non-optional since we always need to track this
+    renderData: Float32Array;   // Make non-optional since all components must have render data
+    pickingData: Float32Array;  // Make non-optional since all components must have picking data
 
-    // Temporary sorting state
+    totalElementCount: number;
+
+    hasAlphaComponents: boolean;
     sortedIndices?: Uint32Array;
     distances?: Float32Array;
     sortedPositions?: Uint32Array;
-
-    // Cache for partitioned indices to reduce GC pressure
-    cachedPartitions?: Uint32Array[];
 
     componentOffsets: ComponentOffset[];
 

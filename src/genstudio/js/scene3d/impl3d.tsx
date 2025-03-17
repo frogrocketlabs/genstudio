@@ -10,7 +10,7 @@ import React, {
   useState,
   useContext
 } from 'react';
-import { throttle } from '../utils';
+import { throttle, deepEqualModuloTypedArrays } from '../utils';
 import { $StateContext } from '../context';
 import { useCanvasSnapshot } from '../canvasSnapshot';
 import {
@@ -24,7 +24,8 @@ import {
   pan,
   roll,
   zoom,
-  DraggingState
+  DraggingState,
+  hasCameraMoved
 } from './camera3d'
 
 import isEqual from 'lodash-es/isEqual';
@@ -94,26 +95,25 @@ const primitiveRegistry: Record<ComponentConfig['type'], PrimitiveSpec<any>> = {
 
 function ensurePickingData(device: GPUDevice, components: ComponentConfig[], ro: RenderObject) {
   if (!ro.pickingDataStale) return;
-  // We'll work directly with the cached picking data to avoid an extra allocation and copy
-  const pickingData = ro.cachedPickingData;
 
-  // For each component, use the partitioned indices to build picking data
+  const {pickingData, componentOffsets, spec, sortedPositions} = ro;
+
   let dataOffset = 0;
-  for (let i = 0; i < ro.componentOffsets.length; i++) {
-    const offset = ro.componentOffsets[i];
+  for (let i = 0; i < componentOffsets.length; i++) {
+    const offset = componentOffsets[i];
     const component = components[offset.componentIdx];
-    const floatsPerInstance = ro.spec.floatsPerPicking;
-    const componentFloats = offset.elementCount * ro.spec.instancesPerElement * floatsPerInstance;
-    buildPickingData(component, ro.spec, pickingData, offset.pickingStart, offset.elementStart, ro.sortedPositions);
+    const floatsPerInstance = spec.floatsPerPicking;
+    const componentFloats = offset.elementCount * spec.instancesPerElement * floatsPerInstance;
+    buildPickingData(component, spec, pickingData, offset.pickingStart, offset.elementStart, sortedPositions);
 
     dataOffset += componentFloats;
   }
 
   // Write picking data to GPU
-  const pickingInfo = ro.pickingVertexBuffers[1] as BufferInfo;
+
   device.queue.writeBuffer(
-    pickingInfo.buffer,
-    pickingInfo.offset,
+    ro.pickingInstanceBuffer.buffer,
+    ro.pickingInstanceBuffer.offset,
     pickingData.buffer,
     pickingData.byteOffset,
     pickingData.byteLength
@@ -188,24 +188,6 @@ function renderPass({
   uniformBindGroup: GPUBindGroup;
   onRenderComplete: () => void;
 }) {
-
-  function isValidRenderObject(ro: RenderObject): ro is Required<Pick<RenderObject, 'pipeline' | 'vertexBuffers' | 'instanceCount'>> & {
-    vertexBuffers: [GPUBuffer, BufferInfo];
-  } & RenderObject {
-    return (
-      ro.pipeline !== undefined &&
-      Array.isArray(ro.vertexBuffers) &&
-      ro.vertexBuffers.length === 2 &&
-      ro.vertexBuffers[0] !== undefined &&
-      ro.vertexBuffers[1] !== undefined &&
-      'buffer' in ro.vertexBuffers[1] &&
-      'offset' in ro.vertexBuffers[1] &&
-      (ro.indexBuffer !== undefined || ro.vertexCount !== undefined) &&
-      typeof ro.instanceCount === 'number' &&
-      ro.instanceCount > 0
-    );
-  }
-
   // Begin render pass
   const cmd = device.createCommandEncoder();
   const pass = cmd.beginRenderPass({
@@ -225,21 +207,13 @@ function renderPass({
 
   // Draw each object
   for (const ro of renderObjects) {
-    if (!isValidRenderObject(ro)) {
-      continue;
-    }
 
     pass.setPipeline(ro.pipeline);
     pass.setBindGroup(0, uniformBindGroup);
-    pass.setVertexBuffer(0, ro.vertexBuffers[0]);
-    const instanceInfo = ro.vertexBuffers[1];
-    pass.setVertexBuffer(1, instanceInfo.buffer, instanceInfo.offset);
-    if (ro.indexBuffer) {
-      pass.setIndexBuffer(ro.indexBuffer, 'uint16');
-      pass.drawIndexed(ro.indexCount ?? 0, ro.instanceCount ?? 1);
-    } else {
-      pass.draw(ro.vertexCount ?? 0, ro.instanceCount ?? 1);
-    }
+    pass.setVertexBuffer(0, ro.geometryBuffer);
+    pass.setVertexBuffer(1, ro.instanceBuffer.buffer, ro.instanceBuffer.offset);
+    pass.setIndexBuffer(ro.indexBuffer, 'uint16');
+    pass.drawIndexed(ro.indexCount, ro.instanceCount);
   }
 
   pass.end();
@@ -260,47 +234,14 @@ function computeUniformData(containerWidth: number, containerHeight: number, cam
   ]);
 }
 
-// Helper to check if camera has moved significantly
-function hasCameraMoved(current: glMatrix.vec3, last: glMatrix.vec3 | undefined): boolean {
-  if (!last) return true;
-  const dx = current[0] - last[0];
-  const dy = current[1] - last[1];
-  const dz = current[2] - last[2];
-  return (dx * dx + dy * dy + dz * dz) > 0.0001;
-}
 
 function updateInstanceSorting(
   ro: RenderObject,
   components: ComponentConfig[],
   cameraPos: glMatrix.vec3
 ): Uint32Array | undefined {
-  // Early exit if no alpha components
-  const hasAlphaComponents = ro.componentOffsets.some(offset =>
-    componentHasAlpha(components[offset.componentIdx])
-  );
-  if (!hasAlphaComponents) return undefined;
 
-  // Compute how many total elements we need
-  let totalElementCount = 0;
-  for (let i = 0; i < ro.componentOffsets.length; i++) {
-    totalElementCount += ro.componentOffsets[i].elementCount;
-  }
-
-  // Check if we need to reallocate arrays
-  const needsReallocation =
-    !ro.sortedIndices ||
-    ro.sortedIndices.length !== totalElementCount ||
-    !ro.distances ||
-    ro.distances.length !== totalElementCount ||
-    !ro.sortedPositions ||
-    ro.sortedPositions.length !== totalElementCount;
-
-  // Allocate or reallocate if needed
-  if (needsReallocation) {
-    ro.sortedIndices = new Uint32Array(totalElementCount);
-    ro.distances = new Float32Array(totalElementCount);
-    ro.sortedPositions = new Uint32Array(totalElementCount);
-  }
+  if (!ro.hasAlphaComponents) return undefined;
 
   const [camX, camY, camZ] = cameraPos;
   let globalIdx = 0;
@@ -325,13 +266,9 @@ function updateInstanceSorting(
     }
   }
 
-  // Sort indices in descending order by distance
-  // This is now O(n log n) rather than O(n²).
   ro.sortedIndices!.sort((iA, iB) => ro.distances![iB] - ro.distances![iA]);
 
-  // Build sortedPositions:
-  //   sortedPositions[ originalIndex ] = newPosition
-  for (let sortedPos = 0; sortedPos < totalElementCount; sortedPos++) {
+  for (let sortedPos = 0; sortedPos < ro.totalElementCount; sortedPos++) {
     const originalIdx = ro.sortedIndices![sortedPos];
     ro.sortedPositions![originalIdx] = sortedPos;
   }
@@ -346,7 +283,14 @@ export function getGeometryResource(resources: GeometryResources, type: keyof Ge
   return resource;
 }
 
-
+function alphaProperties(hasAlphaComponents: boolean, totalElementCount: number) {
+  return {
+    hasAlphaComponents,
+    sortedIndices: hasAlphaComponents ? new Uint32Array(totalElementCount) : undefined,
+    distances: hasAlphaComponents ? new Float32Array(totalElementCount) : undefined,
+    sortedPositions: hasAlphaComponents ? new Uint32Array(totalElementCount) : undefined
+  }
+}
 
 export function SceneInner({
   components,
@@ -372,12 +316,13 @@ export function SceneInner({
     pickTexture: GPUTexture | null;
     pickDepthTexture: GPUTexture | null;
     readbackBuffer: GPUBuffer;
-    lastCameraPosition?: glMatrix.vec3;
 
     renderObjects: RenderObject[];
     pipelineCache: Map<string, PipelineCacheEntry>;
     dynamicBuffers: DynamicBuffers | null;
     resources: GeometryResources;
+
+    renderedCamera?: CameraState;
     renderedComponents?: ComponentConfig[];
   } | null>(null);
 
@@ -723,7 +668,7 @@ export function SceneInner({
 
         // Try to get existing render object
         let renderObject = renderObjectCache.current[type];
-        const needNewRenderObject = !renderObject || renderObject.lastElementRenderCount !== info.totalElementCount;
+        const needNewRenderObject = !renderObject || renderObject.totalElementCount !== info.totalElementCount;
 
         // Create or reuse render data arrays
         let renderData: Float32Array;
@@ -733,22 +678,9 @@ export function SceneInner({
           renderData = new Float32Array(info.totalRenderSize / Float32Array.BYTES_PER_ELEMENT);
           pickingData = new Float32Array(info.totalPickingSize / Float32Array.BYTES_PER_ELEMENT);
         } else {
-          renderData = renderObject.cachedRenderData;
-          pickingData = renderObject.cachedPickingData;
+          renderData = renderObject.renderData;
+          pickingData = renderObject.pickingData;
         }
-
-        for (let i = 0; i < info.elementCounts.length; i++) {
-          buildRenderData(info.components[i], spec, renderData, info.elementOffsets[i]);
-        }
-
-        // Write the combined render data to the GPU buffer
-        device.queue.writeBuffer(
-          dynamicBuffers.renderBuffer,
-          renderOffset,
-          renderData.buffer,
-          renderData.byteOffset,
-          renderData.byteLength
-        );
 
         // Get or create pipeline
         const pipeline = spec.getRenderPipeline(device, bindGroupLayout, pipelineCache);
@@ -789,44 +721,44 @@ export function SceneInner({
           stride: spec.floatsPerPicking * Float32Array.BYTES_PER_ELEMENT
         };
 
+        const hasAlphaComponents = components.some(componentHasAlpha);
+
         if (needNewRenderObject) {
+
           // Create new render object with all the required resources
           const geometryResource = getGeometryResource(resources, type);
           renderObject = {
             pipeline,
             pickingPipeline,
-            vertexBuffers: [
-              geometryResource.vb,
-              bufferInfo
-            ],
+            geometryBuffer: geometryResource.vb,
+            instanceBuffer: bufferInfo,
             indexBuffer: geometryResource.ib,
             indexCount: geometryResource.indexCount,
             instanceCount: totalInstanceCount,
-            pickingVertexBuffers: [
-              geometryResource.vb,
-              pickingBufferInfo
-            ],
-            pickingIndexBuffer: geometryResource.ib,
-            pickingIndexCount: geometryResource.indexCount,
-            pickingVertexCount: geometryResource.vertexCount ?? 0,
+            vertexCount: geometryResource.vertexCount,
+            pickingInstanceBuffer: pickingBufferInfo,
             pickingDataStale: true,
             componentIndex: info.indices[0],
-            cachedRenderData: renderData,
-            cachedPickingData: pickingData,
-            lastElementRenderCount: info.totalElementCount,
+            renderData: renderData,
+            pickingData: pickingData,
+            totalElementCount: info.totalElementCount,
             componentOffsets: typeComponentOffsets,
-            spec: spec
+            spec: spec,
+            ...alphaProperties(hasAlphaComponents, info.totalElementCount)
           };
           renderObjectCache.current[type] = renderObject;
         } else {
           // Update existing render object with new buffer info and state
-          renderObject.vertexBuffers[1] = bufferInfo;
-          renderObject.pickingVertexBuffers[1] = pickingBufferInfo;
+          renderObject.instanceBuffer = bufferInfo;
+          renderObject.pickingInstanceBuffer = pickingBufferInfo;
           renderObject.instanceCount = totalInstanceCount;
           renderObject.componentIndex = info.indices[0];
           renderObject.componentOffsets = typeComponentOffsets;
           renderObject.spec = spec;
           renderObject.pickingDataStale = true;
+          if (hasAlphaComponents && !renderObject.hasAlphaComponents) {
+            Object.assign(renderObject, alphaProperties(hasAlphaComponents, info.totalElementCount))
+          }
         }
 
         validRenderObjects.push(renderObject);
@@ -848,8 +780,16 @@ export function SceneInner({
    ******************************************************/
 
 
-  const renderFrame = useCallback(function renderFrameInner(camState: CameraState, components?: ComponentConfig[]) {
+  const pendingAnimationFrameRef = useRef<number | null>(null);
+
+  const renderFrame = useCallback(function renderFrameInner(source: string, camState?: CameraState, components?: ComponentConfig[]) {
+    if (pendingAnimationFrameRef.current) {
+      cancelAnimationFrame(pendingAnimationFrameRef.current)
+      pendingAnimationFrameRef.current = null
+    }
     if (!gpuRef.current) return;
+
+    camState = camState || activeCameraRef.current!;
 
     const onRenderComplete = $state.beginUpdate("impl3d/renderFrame")
 
@@ -866,30 +806,24 @@ export function SceneInner({
       renderObjects, depthTexture
     } = gpuRef.current;
 
-    const cameraMoved = hasCameraMoved(camState.position, gpuRef.current.lastCameraPosition);
-    gpuRef.current.lastCameraPosition = camState.position;
+    const cameraMoved = hasCameraMoved(camState.position, gpuRef.current.renderedCamera?.position, 0.0001);
+    gpuRef.current.renderedCamera = camState;
 
     // Update data for objects that need it
-    renderObjects.forEach(ro => {
-      const needsSorting = ro.componentOffsets.some(offset =>
-        componentHasAlpha(components![offset.componentIdx])
-      );
-
-      const needsInitialBuild = !ro.lastElementRenderCount;
-      const needsUpdate = needsSorting && (componentsChanged || cameraMoved);
+    renderObjects.forEach(function updateRenderObject(ro) {
+      const needsSorting = ro.hasAlphaComponents;
+      const needsBuild = (needsSorting && cameraMoved) || componentsChanged;
 
       // Skip if no update needed
-      if (!needsInitialBuild && !needsUpdate) return;
+      if (!needsBuild) return;
 
       // Update sorting if needed
       if (needsSorting) {
         updateInstanceSorting(ro, components!, camState.position);
       }
 
-      ro.lastElementRenderCount = ro.componentOffsets.reduce((sum, offset) => sum + offset.elementCount, 0);
-
       // We'll work directly with the cached render data to avoid an extra allocation and copy
-      const renderData = ro.cachedRenderData;
+      const renderData = ro.renderData;
 
       // Build render data for each component
       for (let i = 0; i < ro.componentOffsets.length; i++) {
@@ -901,11 +835,9 @@ export function SceneInner({
 
       ro.pickingDataStale = true;
 
-      // Write render data to GPU buffer
-      const vertexInfo = ro.vertexBuffers[1] as BufferInfo;
       device.queue.writeBuffer(
-        vertexInfo.buffer,
-        vertexInfo.offset,
+        ro.instanceBuffer.buffer,
+        ro.instanceBuffer.offset,
         renderData.buffer,
         renderData.byteOffset,
         renderData.byteLength
@@ -918,7 +850,14 @@ export function SceneInner({
     renderPass({ device, context, depthTexture, renderObjects, uniformBindGroup, onRenderComplete })
 
     onFrameRendered?.(performance.now());
+    onReady();
   }, [containerWidth, containerHeight, onFrameRendered, components]);
+
+  function requestRender (label: string) {
+    if (!pendingAnimationFrameRef.current) {
+      pendingAnimationFrameRef.current = requestAnimationFrame((t) => renderFrame(label))
+    }
+  }
 
 
   /******************************************************
@@ -974,26 +913,18 @@ export function SceneInner({
       pass.setBindGroup(0, uniformBindGroup);
 
       for (const ro of renderObjects) {
-        if (!ro.pickingPipeline || !ro.pickingVertexBuffers[0] || !ro.pickingVertexBuffers[1]) {
-          continue;
-        }
 
         pass.setPipeline(ro.pickingPipeline);
         pass.setBindGroup(0, uniformBindGroup);
-
-        // Set geometry buffer
-        pass.setVertexBuffer(0, ro.pickingVertexBuffers[0]);
-
-        // Set instance buffer
-        const instanceInfo = ro.pickingVertexBuffers[1] as BufferInfo;
-        pass.setVertexBuffer(1, instanceInfo.buffer, instanceInfo.offset);
+        pass.setVertexBuffer(0, ro.geometryBuffer);
+        pass.setVertexBuffer(1, ro.pickingInstanceBuffer.buffer, ro.pickingInstanceBuffer.offset);
 
         // Draw with indices if we have them, otherwise use vertex count
-        if (ro.pickingIndexBuffer) {
-          pass.setIndexBuffer(ro.pickingIndexBuffer, 'uint16');
-          pass.drawIndexed(ro.pickingIndexCount ?? 0, ro.instanceCount ?? 1);
-        } else if (ro.pickingVertexCount) {
-          pass.draw(ro.pickingVertexCount, ro.instanceCount ?? 1);
+        if (ro.indexBuffer) {
+          pass.setIndexBuffer(ro.indexBuffer, 'uint16');
+          pass.drawIndexed(ro.indexCount, ro.instanceCount);
+        } else if (ro.vertexCount) {
+          pass.draw(ro.vertexCount, ro.instanceCount);
         }
       }
 
@@ -1275,15 +1206,18 @@ export function SceneInner({
       // Update textures after canvas size change
       createOrUpdateDepthTexture();
       createOrUpdatePickTextures();
-      renderFrame(activeCameraRef.current!);
+      requestRender('canvas');
     }
   }, [containerWidth, containerHeight, createOrUpdateDepthTexture, createOrUpdatePickTextures, renderFrame]);
 
   // Render when camera or components change
   useEffect(() => {
     if (isReady && gpuRef.current) {
-      renderFrame(activeCameraRef.current!, components);
-      onReady();
+      if (!deepEqualModuloTypedArrays(components, gpuRef.current.renderedComponents)) {
+        renderFrame('components changed', activeCameraRef.current!, components);
+      } else if (!deepEqualModuloTypedArrays(activeCameraRef.current, gpuRef.current.renderedCamera)) {
+        requestRender('camera changed');
+      }
     }
   }, [isReady, components, activeCameraRef.current]);
 

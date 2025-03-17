@@ -372,13 +372,17 @@ const computeConstants = (spec: any, elem: any) => {
   return constants;
 };
 
+const constantsCache = new WeakMap<BaseComponentConfig, ElementConstants>();
+
 const getElementConstants = (
   spec: PrimitiveSpec<BaseComponentConfig>,
   elem: BaseComponentConfig
 ): ElementConstants => {
-  if (elem.constants) return elem.constants;
-  elem.constants = computeConstants(spec, elem);
-  return elem.constants;
+  let constants = constantsCache.get(elem);
+  if (constants) return constants;
+  constants = computeConstants(spec, elem);
+  constantsCache.set(elem, constants);
+  return constants;
 };
 
 /** ===================== POINT CLOUD ===================== **/
