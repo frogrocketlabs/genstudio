@@ -1,3 +1,12 @@
+### [2025.3.10] - Mar 17, 2025
+
+- scene3d: improved rendering of ellipsoid wireframes
+- scene3d: add `roll` (option-drag), `dolly` (ctrl-zoom), and `adjustFov` (alt-zoom) to camera controls
+- scene3d: increase default brightness
+- scene3d: fixed sorting of alpha-blended components
+- plot: add `.onPlotCreate` to plot spec options
+- `Plot.bitmap`: default to 'nearest' interpolation. accept 0-1 floats or 0-255 ints.
+
 ### [2025.3.9] - Mar 10, 2025
 
 - relax python version
