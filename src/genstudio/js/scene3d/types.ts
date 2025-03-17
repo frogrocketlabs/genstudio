@@ -314,6 +314,7 @@ export interface BufferInfo {
     // Temporary sorting state
     sortedIndices?: Uint32Array;
     distances?: Float32Array;
+    sortedPositions?: Uint32Array;
 
     // Cache for partitioned indices to reduce GC pressure
     cachedPartitions?: Uint32Array[];
@@ -337,6 +338,7 @@ export interface BufferInfo {
 
   export interface ComponentOffset {
     componentIdx: number; // The index of the component in your overall component list.
-    start: number;        // The first instance index in the combined buffer for this component.
+    elementStart: number;        // The first instance index in the combined buffer for this component.
+    pickingStart: number;
     elementCount: number;        // How many instances this component contributed.
   }

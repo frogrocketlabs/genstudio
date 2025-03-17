@@ -279,29 +279,48 @@ colors[:, 2] = (centers[:, 2] - centers[:, 2].min()) / (
     centers[:, 2].max() - centers[:, 2].min()
 )
 
-scene_grid_cuboids = Cuboid(
-    centers=centers,
-    colors=colors,
-    half_sizes=[0.15],
-    alpha=0.85,
-    onHover=js(
-        "(i) => $state.update({hover_grid_cuboid: typeof i === 'number' ? [i] : []})"
-    ),
-    decorations=[
-        deco(
-            js("$state.hover_grid_cuboid"),
-            color=[1, 1, 0],
-            scale=1.2,
+scene_grid_cuboids = (
+    Cuboid(
+        centers=centers[: len(centers) // 2],
+        colors=colors[: len(colors) // 2],
+        half_sizes=[0.15],
+        alpha=0.85,
+        onHover=js(
+            "(i) => $state.update({hover_grid_cuboid1: typeof i === 'number' ? [i] : []})"
         ),
-    ],
-) + (
-    {
-        "defaultCamera": {
-            **DEFAULT_CAMERA,
-            "position": [6, -4, 2],
-            "target": [4.75, -1.25, 0.5],
+        decorations=[
+            deco(
+                js("$state.hover_grid_cuboid1"),
+                color=[1, 1, 0],
+                scale=1.2,
+            ),
+        ],
+    )
+    + Cuboid(
+        centers=centers[len(centers) // 2 :],
+        colors=colors[len(colors) // 2 :],
+        half_sizes=[0.15],
+        alpha=0.85,
+        onHover=js(
+            "(i) => $state.update({hover_grid_cuboid2: typeof i === 'number' ? [i] : []})"
+        ),
+        decorations=[
+            deco(
+                js("$state.hover_grid_cuboid2"),
+                color=[1, 1, 0],
+                scale=1.2,
+            ),
+        ],
+    )
+    + (
+        {
+            "defaultCamera": {
+                **DEFAULT_CAMERA,
+                "position": [6, -4, 2],
+                "target": [4.75, -1.25, 0.5],
+            }
         }
-    }
+    )
 )
 
 (
