@@ -155,7 +155,7 @@ cuboid_scene
 
 
 def create_animated_clusters_scene(
-    n_frames=1, n_clusters=15, n_ellipsoids_per_cluster=1000
+    n_frames=10, n_clusters=15, n_ellipsoids_per_cluster=5000
 ):
     """Create an animated scene where cluster centers stay fixed but members regenerate each frame.
     Each cluster is rendered as a separate Ellipsoid component.

@@ -875,7 +875,6 @@ export function SceneInner({
         uniformBindGroup, renderObjects
       } = gpuRef.current;
       if (!pickTexture || !pickDepthTexture || !readbackBuffer) return;
-      if (currentPickingId !== pickingId) return;
 
       // Ensure picking data is ready for all objects
       for (let i = 0; i < renderObjects.length; i++) {
@@ -976,10 +975,6 @@ export function SceneInner({
     // Find which component this instance belongs to by searching through all render objects
     let newHoverState = null;
     for (const ro of gpuRef.current.renderObjects) {
-      // Skip if no component offsets
-      if (!ro?.componentOffsets) continue;
-
-      // Check each component in this render object
       for (const offset of ro.componentOffsets) {
         if (globalIdx >= offset.pickingStart && globalIdx < offset.pickingStart + offset.elementCount) {
           newHoverState = {
@@ -1050,8 +1045,7 @@ export function SceneInner({
   const draggingState = useRef<DraggingState | null>(null);
 
   // Helper function to compare modifiers arrays
-  function hasModifiers(actual: string[] | undefined, expected: string[]): boolean {
-    if (!actual) return expected.length === 0;
+  function hasModifiers(actual: string[], expected: string[]): boolean {
     if (actual.length !== expected.length) return false;
 
     const sortedActual = [...actual].sort();
