@@ -1044,7 +1044,7 @@ export function SceneInner({
    ******************************************************/
   const draggingState = useRef<DraggingState | null>(null);
 
-  // Helper function to compare modifiers arrays
+  // Helper functions to check event modifiers
   function hasModifiers(actual: string[], expected: string[]): boolean {
     if (actual.length !== expected.length) return false;
 
@@ -1052,6 +1052,15 @@ export function SceneInner({
     const sortedExpected = [...expected].sort();
 
     return isEqual(sortedActual, sortedExpected);
+  }
+
+  function eventHasModifiers(e: MouseEvent, expected: string[]): boolean {
+    const modifiers: string[] = [];
+    if (e.shiftKey) modifiers.push('shift');
+    if (e.ctrlKey) modifiers.push('ctrl');
+    if (e.altKey) modifiers.push('alt');
+    if (e.metaKey) modifiers.push('meta');
+    return hasModifiers(modifiers, expected);
   }
 
   // Add throttling for hover picking
@@ -1224,12 +1233,10 @@ export function SceneInner({
       if (!draggingState.current) {
         e.preventDefault();
         handleCameraUpdate(cam => {
-          if (e.shiftKey) {
-            if (e.ctrlKey) {
-              return adjustFov(cam, e.deltaY)
-            } else {
-              return dolly(cam, e.deltaY);
-            }
+          if (eventHasModifiers(e, ['alt'])) {
+            return adjustFov(cam, e.deltaY)
+          } else if (eventHasModifiers(e, ['ctrl'])) {
+            return dolly(cam, e.deltaY)
           } else {
             return zoom(cam, e.deltaY);
           }
