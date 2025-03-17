@@ -24,7 +24,7 @@ export interface PrimitiveSpec<ConfigType> {
      * Number of instances created per element. Defaults to 1 if not specified.
      * Used when a single logical element maps to multiple render instances.
      */
-    instancesPerElement?: number;
+    instancesPerElement: number;
 
     /**
      * Number of floats needed per instance for render data.
@@ -290,34 +290,30 @@ export interface BufferInfo {
   }
 
   export interface RenderObject {
-    pipeline?: GPURenderPipeline;
-    vertexBuffers: Partial<[GPUBuffer, BufferInfo]>;  // Allow empty or partial arrays
-    indexBuffer?: GPUBuffer;
-    vertexCount?: number;
-    indexCount?: number;
-    instanceCount?: number;
+    pipeline: GPURenderPipeline;
+    geometryBuffer: GPUBuffer;
+    instanceBuffer: BufferInfo;
+    indexBuffer: GPUBuffer;
+    indexCount: number;
+    instanceCount: number;
+    vertexCount: number;
 
-    pickingPipeline?: GPURenderPipeline;
-    pickingVertexBuffers: Partial<[GPUBuffer, BufferInfo]>;  // Allow empty or partial arrays
-    pickingIndexBuffer?: GPUBuffer;
-    pickingVertexCount?: number;
-    pickingIndexCount?: number;
-    pickingInstanceCount?: number;
+    pickingPipeline: GPURenderPipeline;
+    pickingInstanceBuffer: BufferInfo;
 
     componentIndex: number;
     pickingDataStale: boolean;
 
     // Arrays owned by this RenderObject, reallocated only when count changes
-    cachedRenderData: Float32Array;   // Make non-optional since all components must have render data
-    cachedPickingData: Float32Array;  // Make non-optional since all components must have picking data
-    lastRenderCount: number;          // Make non-optional since we always need to track this
+    renderData: Float32Array;   // Make non-optional since all components must have render data
+    pickingData: Float32Array;  // Make non-optional since all components must have picking data
 
-    // Temporary sorting state
+    totalElementCount: number;
+
+    hasAlphaComponents: boolean;
     sortedIndices?: Uint32Array;
     distances?: Float32Array;
-
-    // Cache for partitioned indices to reduce GC pressure
-    cachedPartitions?: Uint32Array[];
+    sortedPositions?: Uint32Array;
 
     componentOffsets: ComponentOffset[];
 
@@ -338,6 +334,7 @@ export interface BufferInfo {
 
   export interface ComponentOffset {
     componentIdx: number; // The index of the component in your overall component list.
-    start: number;        // The first instance index in the combined buffer for this component.
-    count: number;        // How many instances this component contributed.
+    elementStart: number;        // The first instance index in the combined buffer for this component.
+    pickingStart: number;
+    elementCount: number;        // How many instances this component contributed.
   }

@@ -1,5 +1,5 @@
 import numpy as np
-from genstudio.scene3d import Ellipsoid, Cuboid
+from genstudio.scene3d import Ellipsoid, Cuboid, deco, Scene
 import genstudio.plot as Plot
 import math
 from genstudio.plot import js
@@ -155,9 +155,10 @@ cuboid_scene
 
 
 def create_animated_clusters_scene(
-    n_frames=60, n_clusters=15, n_ellipsoids_per_cluster=1000
+    n_frames=10, n_clusters=15, n_ellipsoids_per_cluster=5000
 ):
     """Create an animated scene where cluster centers stay fixed but members regenerate each frame.
+    Each cluster is rendered as a separate Ellipsoid component.
 
     Returns a Plot layout with animation controls.
     """
@@ -167,35 +168,26 @@ def create_animated_clusters_scene(
     # Generate one fixed random color per cluster
     cluster_fixed_colors = generate_cluster_colors(n_clusters)
 
-    # Pre-generate all frame data
-    centers_frames = []
-    colors_frames = []
-    alphas_frames = []
-    half_sizes_frames = []
+    # Pre-generate all frame data for each cluster
+    clusters_frames = []
+    for cluster_idx in range(n_clusters):
+        cluster_frames = {"centers": [], "colors": [], "alphas": [], "half_sizes": []}
 
-    for frame in range(n_frames):
-        frame_centers = []
-        frame_colors = []
-        frame_alphas = []
-        frame_half_sizes = []
+        center = cluster_centers[cluster_idx]
+        cluster_color = cluster_fixed_colors[cluster_idx]
 
-        # Generate new random positions/properties for each cluster
-        for cluster_idx, center in enumerate(cluster_centers):
+        for frame in range(n_frames):
+            # Generate new random positions/properties for this cluster
             positions = generate_cluster_positions(
-                center, n_ellipsoids_per_cluster, spread=0.6
+                center, n_ellipsoids_per_cluster, spread=0.2
             )
-            frame_centers.extend(positions)
 
             # Use the fixed color for this cluster
-            cluster_colors = np.tile(
-                cluster_fixed_colors[cluster_idx], (n_ellipsoids_per_cluster, 1)
-            )
-            frame_colors.extend(cluster_colors)
+            cluster_colors = np.tile(cluster_color, (n_ellipsoids_per_cluster, 1))
 
             cluster_alphas, scales = calculate_distance_based_values(
                 positions, center, alpha_range=(0.15, 0.85), scale_range=(0.4, 1.0)
             )
-            frame_alphas.extend(cluster_alphas)
 
             base_half_size = np.random.uniform(0.08, 0.16)
             cluster_half_sizes = np.array(
@@ -203,31 +195,53 @@ def create_animated_clusters_scene(
                 * n_ellipsoids_per_cluster
             )
             cluster_half_sizes *= scales[:, np.newaxis]
-            frame_half_sizes.extend(cluster_half_sizes)
 
-        # Store arrays for this frame - reshape to match expected format and ensure float32
-        centers_frames.append(np.array(frame_centers, dtype=np.float32).flatten())
-        colors_frames.append(np.array(frame_colors, dtype=np.float32).flatten())
-        alphas_frames.append(np.array(frame_alphas, dtype=np.float32).flatten())
-        half_sizes_frames.append(np.array(frame_half_sizes, dtype=np.float32).flatten())
+            # Store arrays for this frame - ensure float32
+            cluster_frames["centers"].append(
+                np.array(positions, dtype=np.float32).flatten()
+            )
+            cluster_frames["colors"].append(
+                np.array(cluster_colors, dtype=np.float32).flatten()
+            )
+            cluster_frames["alphas"].append(
+                np.array(cluster_alphas, dtype=np.float32).flatten()
+            )
+            cluster_frames["half_sizes"].append(
+                np.array(cluster_half_sizes, dtype=np.float32).flatten()
+            )
 
-    # Create the animated scene
+        clusters_frames.append(cluster_frames)
+
+    # Create the animated scene with multiple Ellipsoid components
     scene = (
-        Ellipsoid(
-            centers=js("$state.centers[$state.frame]"),
-            colors=js("$state.colors[$state.frame]"),
-            alphas=js("$state.alphas[$state.frame]"),
-            half_sizes=js("$state.half_sizes[$state.frame]"),
+        Scene(
+            *[
+                Ellipsoid(
+                    centers=js(f"$state.clusters[{i}].centers[$state.frame]"),
+                    colors=js(f"$state.clusters[{i}].colors[$state.frame]"),
+                    alpha=0.5,
+                    half_sizes=js(f"$state.clusters[{i}].half_sizes[$state.frame]"),
+                    onHover=js(
+                        f"(idx) => $state.update({{hovered: idx !== undefined ? [{i}, idx] : undefined}})"
+                    ),
+                    decorations=[
+                        deco(
+                            js(
+                                f"$state.hovered && $state.hovered[0] === {i} ? [$state.hovered[1]] : []"
+                            ),
+                            color=[1, 0, 0],
+                        )
+                    ],
+                )
+                for i in range(n_clusters)
+            ]
         )
         + {"controls": ["fps"]}
         | Plot.Slider("frame", 0, range=n_frames, fps="raf")
         | Plot.initialState(
             {
                 "frame": 0,
-                "centers": centers_frames,
-                "colors": colors_frames,
-                "alphas": alphas_frames,
-                "half_sizes": half_sizes_frames,
+                "clusters": clusters_frames,
                 "camera": get_default_camera(),
             }
         )

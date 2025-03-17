@@ -53,24 +53,25 @@ import {acopy} from '../utils'
 function applyDecorations(
   decorations: Decoration[] | undefined,
   setter: (i: number, dec: Decoration) => void,
-  sortedIndices?: Uint32Array,
+  baseOffset: number,
+  sortedPositions?: Uint32Array,
   instancesPerElement: number = 1
 ) {
   if (!decorations) return;
 
-  const isSorted = !!sortedIndices;
+  const isSorted = !!sortedPositions;
 
   for (const dec of decorations) {
     if (!dec.indexes) continue;
 
-    for (const elemIdx of dec.indexes) {
-      if (elemIdx < 0) continue;
+    for (let i of dec.indexes) {
+      if (i < 0) continue;
+      const sortedIndex = isSorted ? sortedPositions[baseOffset+i] - baseOffset : i;
 
       // Apply decoration to all instances of this element
       for (let instOffset = 0; instOffset < instancesPerElement; instOffset++) {
-        const instanceIdx = elemIdx * instancesPerElement + instOffset;
-        const outIndex = isSorted ? sortedIndices[instanceIdx] : instanceIdx;
-        setter(outIndex, dec);
+        const instanceIdx = ((sortedIndex + baseOffset) * instancesPerElement) + instOffset;
+        setter(instanceIdx, dec);
       }
     }
   }
@@ -119,33 +120,23 @@ export function buildRenderData<ConfigType extends BaseComponentConfig>(
   elem: ConfigType,
   spec: PrimitiveSpec<ConfigType>,
   out: Float32Array,
-  sortedIndices?: Uint32Array
+  baseOffset: number,
+  sortedPositions?: Uint32Array
 ): boolean {
   // Get element count and instance count
   const elementCount = spec.getElementCount(elem);
-  const instancesPerElement = spec.instancesPerElement || 1;
-  const instanceCount = elementCount * instancesPerElement;
+  const instancesPerElement = spec.instancesPerElement;
 
-  if (instanceCount === 0) return false;
+  if (elementCount === 0) return false;
 
   const constants = getElementConstants(spec, elem);
 
-  if (instancesPerElement === 1) {
-    for (let elemIndex = 0; elemIndex < elementCount; elemIndex++) {
-      const outIndex = sortedIndices ? sortedIndices[elemIndex] : elemIndex;
+  for (let elemIndex = 0; elemIndex < elementCount; elemIndex++) {
+    const sortedIndex = sortedPositions ? sortedPositions[baseOffset+elemIndex] - baseOffset : elemIndex;
+    // For each instance of this element
+    for (let instOffset = 0; instOffset < instancesPerElement; instOffset++) {
+      const outIndex = (sortedIndex + baseOffset) * instancesPerElement + instOffset;
       spec.fillRenderGeometry(constants, elem, elemIndex, out, outIndex);
-    }
-  } else {
-    // For each element
-    for (let elemIndex = 0; elemIndex < elementCount; elemIndex++) {
-      // For each instance of this element
-      for (let instOffset = 0; instOffset < instancesPerElement; instOffset++) {
-        const instanceIndex = elemIndex * instancesPerElement + instOffset;
-        if (instanceIndex >= instanceCount) break; // Safety check
-
-        const outIndex = sortedIndices ? sortedIndices[instanceIndex] : instanceIndex;
-        spec.fillRenderGeometry(constants, elem, elemIndex, out, outIndex);
-      }
     }
   }
 
@@ -156,7 +147,7 @@ export function buildRenderData<ConfigType extends BaseComponentConfig>(
     } else {
       applyDecoration(spec, dec, out, outIndex * spec.floatsPerInstance);
     }
-  }, sortedIndices, instancesPerElement);
+  }, baseOffset, sortedPositions, instancesPerElement);
 
   return true;
 }
@@ -169,35 +160,24 @@ export function buildPickingData<ConfigType extends BaseComponentConfig>(
   elem: ConfigType,
   spec: PrimitiveSpec<ConfigType>,
   out: Float32Array,
-  baseID: number,
-  sortedIndices?: Uint32Array
+  pickingBase: number,
+  baseOffset: number,
+  sortedPositions?: Uint32Array,
 ): void {
   // Get element count and instance count
   const elementCount = spec.getElementCount(elem);
-  const instancesPerElement = spec.instancesPerElement || 1;
-  const instanceCount = elementCount * instancesPerElement;
+  const instancesPerElement = spec.instancesPerElement;
 
-  if (instanceCount === 0) return;
+  if (elementCount === 0) return;
 
   const constants = getElementConstants(spec, elem);
 
-  if (instancesPerElement === 1) {
-    // Fast path for single instance per element
-    for (let elemIndex = 0; elemIndex < elementCount; elemIndex++) {
-      const outIndex = sortedIndices ? sortedIndices[elemIndex] : elemIndex;
-      spec.fillPickingGeometry(constants, elem, elemIndex, out, outIndex, baseID);
-    }
-  } else {
-    // For each element
-    for (let elemIndex = 0; elemIndex < elementCount; elemIndex++) {
-      // For each instance of this element
-      for (let instOffset = 0; instOffset < instancesPerElement; instOffset++) {
-        const instanceIndex = elemIndex * instancesPerElement + instOffset;
-        if (instanceIndex >= instanceCount) break; // Safety check
-
-        const outIndex = sortedIndices ? sortedIndices[instanceIndex] : instanceIndex;
-        spec.fillPickingGeometry(constants, elem, elemIndex, out, outIndex, baseID);
-      }
+  for (let i = 0; i < elementCount; i++) {
+    const sortedIndex = sortedPositions ? sortedPositions[baseOffset+i] - baseOffset : i;
+    // For each instance of this element
+    for (let instOffset = 0; instOffset < instancesPerElement; instOffset++) {
+      const outIndex = (sortedIndex + baseOffset) * instancesPerElement + instOffset;
+      spec.fillPickingGeometry(constants, elem, i, out, outIndex, pickingBase);
     }
   }
 
@@ -208,7 +188,7 @@ export function buildPickingData<ConfigType extends BaseComponentConfig>(
         spec.applyDecorationScale(out, outIndex * spec.floatsPerPicking, dec.scale);
       }
     }
-  }, sortedIndices, instancesPerElement);
+  }, baseOffset, sortedPositions, instancesPerElement);
 }
 
 /** ===================== GPU PIPELINE HELPERS (unchanged) ===================== **/
@@ -392,13 +372,17 @@ const computeConstants = (spec: any, elem: any) => {
   return constants;
 };
 
+const constantsCache = new WeakMap<BaseComponentConfig, ElementConstants>();
+
 const getElementConstants = (
   spec: PrimitiveSpec<BaseComponentConfig>,
   elem: BaseComponentConfig
 ): ElementConstants => {
-  if (elem.constants) return elem.constants;
-  elem.constants = computeConstants(spec, elem);
-  return elem.constants;
+  let constants = constantsCache.get(elem);
+  if (constants) return constants;
+  constants = computeConstants(spec, elem);
+  constantsCache.set(elem, constants);
+  return constants;
 };
 
 /** ===================== POINT CLOUD ===================== **/
@@ -412,6 +396,7 @@ export interface PointCloudComponentConfig extends BaseComponentConfig {
 
 export const pointCloudSpec: PrimitiveSpec<PointCloudComponentConfig> = {
   type: "PointCloud",
+  instancesPerElement: 1,
 
   defaults: {
     size: 0.02,
@@ -566,6 +551,7 @@ export interface EllipsoidComponentConfig extends BaseComponentConfig {
 
 export const ellipsoidSpec: PrimitiveSpec<EllipsoidComponentConfig> = {
   type: "Ellipsoid",
+  instancesPerElement: 1,
 
   defaults: {
     half_size: [0.5, 0.5, 0.5],
@@ -725,6 +711,7 @@ export interface CuboidComponentConfig extends BaseComponentConfig {
 
 export const cuboidSpec: PrimitiveSpec<CuboidComponentConfig> = {
   type: "Cuboid",
+  instancesPerElement: 1,
 
   defaults: {
     half_size: [0.1, 0.1, 0.1],
@@ -902,6 +889,7 @@ function countSegments(elem: LineBeamsComponentConfig): number {
 
 export const lineBeamsSpec: PrimitiveSpec<LineBeamsComponentConfig> = {
   type: "LineBeams",
+  instancesPerElement: 1,
 
   defaults: {
     size: 0.02
