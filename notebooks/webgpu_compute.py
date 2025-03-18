@@ -21,6 +21,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
 }
 """
 }
+
 pixelate_by_workgroup = {
     "shader": """
 // Texture bindings for input/output and uniform buffer
@@ -42,23 +43,32 @@ fn main(
     let tint = vec4<f32>(uniforms.x, uniforms.y, uniforms.z, 1.0);
     let blockSize = max(2.0, uniforms.w);
 
-    // Calculate block coordinates
-    let blockX = group_id.x * u32(blockSize);
-    let blockY = group_id.y * u32(blockSize);
+    // Calculate number of blocks needed to cover the image
+    let numBlocksX = ceil(f32(dims.x) / blockSize);
+    let numBlocksY = ceil(f32(dims.y) / blockSize);
+
+    // Calculate normalized block size to ensure even coverage
+    let normalizedBlockSizeX = f32(dims.x) / numBlocksX;
+    let normalizedBlockSizeY = f32(dims.y) / numBlocksY;
+
+    // Calculate block coordinates using normalized sizes
+    let blockX = u32(round(f32(group_id.x) * normalizedBlockSizeX));
+    let blockY = u32(round(f32(group_id.y) * normalizedBlockSizeY));
 
     // Skip if this block is completely outside texture bounds
     if (blockX >= dims.x || blockY >= dims.y) {
         return;
     }
 
+    // Calculate block boundaries using normalized sizes
+    let blockEndX = min(u32(round(f32(group_id.x + 1u) * normalizedBlockSizeX)), dims.x);
+    let blockEndY = min(u32(round(f32(group_id.y + 1u) * normalizedBlockSizeY)), dims.y);
+
     // Calculate average color for this block
     var avgColor = vec4<f32>(0.0);
     var count = 0u;
 
     // Sum up all pixels in this block
-    let blockEndX = min(blockX + u32(blockSize), dims.x);
-    let blockEndY = min(blockY + u32(blockSize), dims.y);
-
     for (var y = blockY; y < blockEndY; y++) {
         for (var x = blockX; x < blockEndX; x++) {
             avgColor += textureLoad(inputTex, vec2<i32>(i32(x), i32(y)), 0);
@@ -247,13 +257,8 @@ fn main(
         [
             js("WebGPUVideoView"),
             {
-                "computeShader": js("$state.getCurrentShader().shader"),
+                "transform": js("$state.getCurrentShader()"),
                 "showSourceVideo": True,
-                "workgroupSize": js(
-                    "$state.getCurrentShader().workgroupSize || [16, 16]"
-                ),
-                "dispatchScale": js("$state.getCurrentShader().dispatchScale"),
-                "customDispatch": js("$state.getCurrentShader().customDispatch"),
                 "uniforms": js(
                     "[$state.tint[0], $state.tint[1], $state.tint[2], $state.pixelBlockSize]"
                 ),

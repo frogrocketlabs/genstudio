@@ -4,13 +4,14 @@
 // The user provides the WGSL compute shader code as a string prop.
 //
 // Props:
-// - computeShader: WGSL compute shader code as a string
+// - transform: Object containing:
+//   - shader: WGSL compute shader code as a string
+//   - workgroupSize: Array with two elements [x, y] for compute shader workgroup size (default: [8, 8])
+//   - dispatchScale: Multiplier for workgroup dispatch calculation (default: 1)
+//   - customDispatch: Array with two elements [x, y] for direct workgroup count control (default: null)
 // - width: Canvas width (default: 640)
 // - height: Canvas height (default: 480)
 // - showSourceVideo: Whether to show the source video (default: false)
-// - workgroupSize: Array with two elements [x, y] for compute shader workgroup size (default: [8, 8])
-// - dispatchScale: Multiplier for workgroup dispatch calculation (default: 1)
-// - customDispatch: Array with two elements [x, y] for direct workgroup count control (default: null)
 // - uniforms: An object of uniforms to be copied into the WebGPU context and available in the compute shader
 // - debug: Enable debug logging (default: false)
 //
@@ -209,6 +210,40 @@ async function initWebGPU(state, canvasId) {
   return { device, context, format };
 }
 
+// Helper function to create uniform buffer from uniforms object
+function createUniformBuffer(device, uniforms) {
+  const uniformKeys = Object.keys(uniforms).sort();
+  const uniformArray = uniformKeys.map((key) => uniforms[key]);
+  const uniformData = new Float32Array(
+    uniformArray.length > 0 ? uniformArray : [0]
+  );
+  const uniformBuffer = device.createBuffer({
+    size: uniformData.byteLength,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    mappedAtCreation: true,
+  });
+  new Float32Array(uniformBuffer.getMappedRange()).set(uniformData);
+  uniformBuffer.unmap();
+  return uniformBuffer;
+}
+
+// Helper function to update uniform buffer with new values
+function updateUniformBuffer(device, uniformBuffer, uniforms) {
+  if (!device || !uniformBuffer) return;
+  const uniformKeys = Object.keys(uniforms).sort();
+  const uniformArray = uniformKeys.map((key) => uniforms[key]);
+  const uniformData = new Float32Array(
+    uniformArray.length > 0 ? uniformArray : [0]
+  );
+  device.queue.writeBuffer(
+    uniformBuffer,
+    0,
+    uniformData.buffer,
+    uniformData.byteOffset,
+    uniformData.byteLength
+  );
+}
+
 async function setupWebGPUResources(state, { width, height, canvasId, uniforms }) {
   const { device, context, format } = await initWebGPU(state, canvasId);
   await setupWebcam(state, width, height);
@@ -313,34 +348,33 @@ async function setupWebGPUResources(state, { width, height, canvasId, uniforms }
     ],
   });
 
-  // Create uniform buffer from uniforms prop
-  const uniformKeys = Object.keys(uniforms).sort();
-  const uniformArray = uniformKeys.map((key) => uniforms[key]);
-  const uniformData = new Float32Array(
-    uniformArray.length > 0 ? uniformArray : [0]
-  );
-  const uniformBuffer = device.createBuffer({
-    size: uniformData.byteLength,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    mappedAtCreation: true,
-  });
-  new Float32Array(uniformBuffer.getMappedRange()).set(uniformData);
-  uniformBuffer.unmap();
   // Note: Compute pipeline creation is deferred, allowing it to be swapped later
   state.inputTexture = inputTexture;
   state.outputTexture = outputTexture;
   state.sampler = sampler;
   state.renderPipeline = renderPipeline;
   state.renderBindGroup = renderBindGroup;
-  state.uniformBuffer = uniformBuffer;
+  state.uniformBuffer = createUniformBuffer(device, uniforms);
 }
 
-function updateComputePipeline(state, { computeShader, workgroupSize }) {
+function transformWithDefaults(transform = {}) {
+  return {
+    shader: transform.shader ?? '',
+    workgroupSize: transform.workgroupSize ?? [16, 16],
+    dispatchScale: transform.dispatchScale ?? 1,
+    customDispatch: transform.customDispatch ?? null
+  };
+}
+
+
+function updateComputePipeline(state, transform) {
   const device = state.device;
   if (!device) return;
 
+  const workgroupSize = transform.workgroupSize || DEFAULTS.workgroupSize;
+
   const computeModule = device.createShaderModule({
-    code: computeShader,
+    code: transform.shader,
   });
 
   const computePipeline = device.createComputePipeline({
@@ -365,7 +399,7 @@ function updateComputePipeline(state, { computeShader, workgroupSize }) {
   state.computeBindGroup = computeBindGroup;
 }
 
-async function renderFrame(state, width, height) {
+async function renderFrame(state, transform, width, height) {
   const {
     video,
     videoCanvas,
@@ -377,8 +411,6 @@ async function renderFrame(state, width, height) {
     renderBindGroup,
     computePipeline,
     computeBindGroup,
-    dispatchScale = 1,
-    customDispatch = null,
   } = state;
 
   if (!video || video.readyState < 3 || video.paused) return;
@@ -412,9 +444,9 @@ async function renderFrame(state, width, height) {
 
   // Use custom dispatch if provided, otherwise calculate based on dimensions and scale
   const [wgX, wgY] =
-    customDispatch || [
-      Math.ceil(width / (computePipeline.workgroupSize.x * dispatchScale)),
-      Math.ceil(height / (computePipeline.workgroupSize.y * dispatchScale)),
+    transform.customDispatch || [
+      Math.ceil(width / (transform.workgroupSize[0] * transform.dispatchScale)),
+      Math.ceil(height / (transform.workgroupSize[1] * transform.dispatchScale)),
     ];
 
   // let's add that: if debugging is enabled, log dispatch workgroup values
@@ -445,19 +477,19 @@ async function renderFrame(state, width, height) {
 }
 
 export const WebGPUVideoView = ({
-  computeShader,
+  transform = {},
   width = 640,
   height = 480,
   showSourceVideo = false,
-  workgroupSize,
-  dispatchScale = 1,
-  customDispatch = null,
   uniforms = {},
-  debug = false // new debug prop added
+  debug = false
 }) => {
   const canvasId = React.useId();
-  workgroupSize = workgroupSize || [8, 8];
+  const workgroupSize = transform.workgroupSize || [8, 8];
   const frameRef = React.useRef(null);
+  transform = transformWithDefaults(transform);
+  const transformRef = React.useRef(transform);
+  transformRef.current = transform;
 
   // Group state for WebGPU and video, including the debug flag
   const webgpuRef = React.useRef({
@@ -475,9 +507,7 @@ export const WebGPUVideoView = ({
     renderPipeline: null,
     renderBindGroup: null,
     uniformBuffer: null,
-    dispatchScale,
-    customDispatch,
-    debug, // store debug flag in state
+    debug,
   });
 
   // Setup video canvas
@@ -492,21 +522,20 @@ export const WebGPUVideoView = ({
     return cleanup;
   }, [width, height, showSourceVideo]);
 
-  // Initialize WebGPU resources and start rendering (excluding computeShader from dependencies)
+  // Initialize WebGPU resources and start rendering
   React.useEffect(() => {
     setupWebGPUResources(webgpuRef.current, {
       width,
       height,
-      computeShader,
       canvasId,
       uniforms,
     })
       .then(() => {
         // After initial setup, create the compute pipeline from the provided shader.
-        updateComputePipeline(webgpuRef.current, { computeShader, uniforms, workgroupSize });
+        updateComputePipeline(webgpuRef.current, transform);
         const animate = () => {
           frameRef.current = requestAnimationFrame(animate);
-          renderFrame(webgpuRef.current, width, height);
+          renderFrame(webgpuRef.current, transformRef.current, width, height);
         };
         animate();
       })
@@ -528,30 +557,16 @@ export const WebGPUVideoView = ({
     };
   }, [width, height, canvasId]);
 
-  // Update compute pipeline if computeShader changes without restarting everything
+  // Update compute pipeline if transform changes without restarting everything
   React.useEffect(() => {
     if (webgpuRef.current.device) {
-      updateComputePipeline(webgpuRef.current, { computeShader, uniforms, workgroupSize });
+      updateComputePipeline(webgpuRef.current, transform);
     }
-  }, [computeShader, ...workgroupSize]);
+  }, [transform.shader, ...workgroupSize]);
 
-  // Update uniforms on change
+  // Update uniforms on change using helper function
   React.useEffect(() => {
-    const device = webgpuRef.current.device;
-    const uniformBuffer = webgpuRef.current.uniformBuffer;
-    if (!device || !uniformBuffer) return;
-    const uniformKeys = Object.keys(uniforms).sort();
-    const uniformArray = uniformKeys.map((key) => uniforms[key]);
-    const uniformData = new Float32Array(
-      uniformArray.length > 0 ? uniformArray : [0]
-    );
-    device.queue.writeBuffer(
-      uniformBuffer,
-      0,
-      uniformData.buffer,
-      uniformData.byteOffset,
-      uniformData.byteLength
-    );
+    updateUniformBuffer(webgpuRef.current.device, webgpuRef.current.uniformBuffer, uniforms);
   }, [uniforms]);
 
   return html(["canvas", { id: canvasId, width, height }]);
