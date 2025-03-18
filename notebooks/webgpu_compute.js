@@ -9,10 +9,15 @@
 // - height: Canvas height (default: 480)
 // - showSourceVideo: Whether to show the source video (default: false)
 // - workgroupSize: Array with two elements [x, y] for compute shader workgroup size (default: [8, 8])
+// - dispatchScale: Multiplier for workgroup dispatch calculation (default: 1)
+// - customDispatch: Array with two elements [x, y] for direct workgroup count control (default: null)
+// - uniforms: An object of uniforms to be copied into the WebGPU context and available in the compute shader
+// - debug: Enable debug logging (default: false)
 //
 // The compute shader should:
 // - Use @group(0) @binding(0) for the input texture (texture_2d<f32>)
 // - Use @group(0) @binding(1) for the output texture (texture_storage_2d<rgba8unorm, write>)
+// - Use @group(0) @binding(2) for the uniform buffer containing the uniforms
 // - Have a main() function with @compute @workgroup_size(x, y) decorator matching workgroupSize prop
 // - Take a @builtin(global_invocation_id) parameter to get pixel coordinates
 // - Check texture bounds before processing pixels
@@ -21,6 +26,7 @@
 //
 // @group(0) @binding(0) var inputTex : texture_2d<f32>;
 // @group(0) @binding(1) var outputTex : texture_storage_2d<rgba8unorm, write>;
+// @group(0) @binding(2) var<uniform> uniforms: MyUniforms;
 //
 // @compute @workgroup_size(8, 8)
 // fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
@@ -31,387 +37,522 @@
 //   // Process srcColor here...
 //   textureStore(outputTex, vec2<i32>(gid.xy), outColor);
 // }
-//
 
-const { html } = genstudio.api;
+const { html, React } = genstudio.api;
+const { useState } = React;
+export const colorScrubber = ({ value, onInput }) => {
+  // Use internal state if no external value is provided (uncontrolled mode)
+  const [internalColor, setInternalColor] = useState([1, 0, 0]);
+  const currentColor = value !== undefined ? value : internalColor;
 
-export const WebGPUVideoView = ({computeShader, width = 640, height = 480, showSourceVideo = false, workgroupSize = [8, 8]}) => {
-  const canvasId = React.useId();
-  const videoProcessor = React.useRef(null);
-  const frameRef = React.useRef(null);
+  // Helper: Convert HSL (with s:100%, l:50%) to RGB array
+  const hslToRgb = (h) => {
+    h = h / 360;
+    const s = 1.0;
+    const l = 0.5;
+    const k = (n) => (n + h * 12) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = (n) => l - a * Math.max(Math.min(k(n) - 3, 9 - k(n), 1), -1);
+    return [f(0), f(8), f(4)];
+  };
 
-  React.useEffect(() => {
-    const init = async () => {
-      videoProcessor.current = new WebGPUVideoCompute(canvasId, width, height, showSourceVideo);
-      try {
-        await videoProcessor.current.init();
-        videoProcessor.current.setComputeShader(computeShader);
-        videoProcessor.current.setWorkgroupSize(workgroupSize[0], workgroupSize[1]);
-
-        const renderLoop = () => {
-          frameRef.current = requestAnimationFrame(renderLoop);
-          videoProcessor.current.renderFrame();
-        };
-        renderLoop();
-      } catch (error) {
-        console.error("WebGPU initialization failed:", error);
+  // Helper: Convert RGB array to hue (0-360)
+  const rgbToHue = (rgb) => {
+    const [r, g, b] = rgb;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h;
+    if (max === min) {
+      h = 0;
+    } else {
+      const d = max - min;
+      if (max === r) {
+        h = (g - b) / d + (g < b ? 6 : 0);
+      } else if (max === g) {
+        h = (b - r) / d + 2;
+      } else {
+        h = (r - g) / d + 4;
       }
+      h /= 6;
+    }
+    return Math.round(h * 360);
+  };
+
+  // Linear gradient for the slider background using RGB values
+  const gradientBackground = `linear-gradient(to right, ${Array.from({ length: 12 }, (_, i) => {
+    const [r, g, b] = hslToRgb(i * 30);
+    return `rgb(${r * 255}, ${g * 255}, ${b * 255})`;
+  }).join(', ')
+    })`;
+
+  const handleColorChange = (e) => {
+    if (e.target.type === 'range') {
+      const newHue = parseInt(e.target.value, 10);
+      const newColor = hslToRgb(newHue);
+      if (onInput) {
+        onInput({ target: { value: newColor } });
+      }
+      if (value === undefined) {
+        setInternalColor(newColor);
+      }
+    }
+  };
+
+  return html(
+    [
+      "div.h-10.w-full.rounded-full.mb-4.overflow-hidden",
+      { style: { background: gradientBackground } },
+      [
+        "input",
+        {
+          type: "range",
+          min: "0",
+          max: "360",
+          value: rgbToHue(currentColor),
+          onChange: handleColorChange,
+          className: `
+        w-full h-full appearance-none bg-transparent
+        [&::-webkit-slider-thumb]:(border appearance-none rounded-full bg-white w-[20px] h-[20px])`,
+        },
+      ],
+    ]
+  );
+};
+
+function setupVideoCanvas(width, height, showSourceVideo) {
+  const videoCanvas = document.createElement("canvas");
+  videoCanvas.width = width;
+  videoCanvas.height = height;
+  const videoCtx = videoCanvas.getContext("2d");
+
+  if (showSourceVideo) {
+    Object.assign(videoCanvas.style, {
+      position: "fixed",
+      bottom: "10px",
+      right: "10px",
+      border: "1px solid red",
+      width: "160px",
+      height: "120px",
+      zIndex: "1000",
+    });
+    document.body.appendChild(videoCanvas);
+  }
+
+  return {
+    videoCanvas,
+    videoCtx,
+    cleanup: () => {
+      if (showSourceVideo) {
+        document.body.removeChild(videoCanvas);
+      }
+    },
+  };
+}
+
+async function setupWebcam(state, width, height) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: width },
+        height: { ideal: height },
+      },
+    });
+
+    const video = document.createElement("video");
+    Object.assign(video, {
+      srcObject: stream,
+      width,
+      height,
+      autoplay: true,
+      playsInline: true,
+      muted: true,
+    });
+
+    await new Promise((resolve) => {
+      video.onloadedmetadata = () => video.play().then(resolve);
+    });
+
+    state.video = video;
+  } catch (error) {
+    console.error("Webcam setup failed:", error);
+    throw error;
+  }
+}
+
+async function initWebGPU(state, canvasId) {
+  if (!navigator.gpu) {
+    throw new Error("WebGPU not supported");
+  }
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) {
+    throw new Error("Failed to get GPU adapter");
+  }
+  const device = await adapter.requestDevice({validationEnabled: true});
+  const canvas = document.getElementById(canvasId);
+  const context = canvas.getContext("webgpu");
+
+  if (!context) {
+    throw new Error("Failed to get WebGPU context");
+  }
+
+  const format = navigator.gpu.getPreferredCanvasFormat();
+  context.configure({
+    device,
+    format,
+    alphaMode: "premultiplied",
+  });
+
+  state.device = device;
+  state.context = context;
+  state.renderFormat = format;
+
+  return { device, context, format };
+}
+
+async function setupWebGPUResources(state, { width, height, canvasId, uniforms }) {
+  const { device, context, format } = await initWebGPU(state, canvasId);
+  await setupWebcam(state, width, height);
+
+  const usage = GPUTextureUsage;
+  const textureFormat = "rgba8unorm";
+
+  const inputTexture = device.createTexture({
+    size: [width, height],
+    format: textureFormat,
+    usage:
+      usage.COPY_SRC |
+      usage.COPY_DST |
+      usage.TEXTURE_BINDING |
+      usage.RENDER_ATTACHMENT,
+  });
+
+  const outputTexture = device.createTexture({
+    size: [width, height],
+    format: textureFormat,
+    usage:
+      usage.STORAGE_BINDING |
+      usage.TEXTURE_BINDING |
+      usage.COPY_DST |
+      usage.RENDER_ATTACHMENT,
+  });
+
+  // Create render pipeline and resources
+  const vertexShaderCode = /* wgsl */ `
+    struct VertexOutput {
+      @builtin(position) position: vec4<f32>,
+      @location(0) texCoord: vec2<f32>,
     };
 
-    init().catch(error => {
-      console.error("Fatal error during initialization:", error);
-    });
+    @vertex
+    fn vsMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+      var output: VertexOutput;
+      var positions = array<vec2<f32>, 6>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(-1.0, 1.0),
+        vec2<f32>(-1.0, 1.0),
+        vec2<f32>(1.0, -1.0),
+        vec2<f32>(1.0, 1.0)
+      );
+      var texCoords = array<vec2<f32>, 6>(
+        vec2<f32>(0.0, 1.0),
+        vec2<f32>(1.0, 1.0),
+        vec2<f32>(0.0, 0.0),
+        vec2<f32>(0.0, 0.0),
+        vec2<f32>(1.0, 1.0),
+        vec2<f32>(1.0, 0.0)
+      );
+      output.position = vec4<f32>(positions[vertexIndex], 0.0, 1.0);
+      output.texCoord = texCoords[vertexIndex];
+      return output;
+    }
+  `;
+
+  const fragmentShaderCode = /* wgsl */ `
+    @group(0) @binding(0) var myTex: texture_2d<f32>;
+    @group(0) @binding(1) var mySampler: sampler;
+
+    @fragment
+    fn fsMain(@location(0) texCoord: vec2<f32>) -> @location(0) vec4<f32> {
+      return textureSample(myTex, mySampler, texCoord);
+    }
+  `;
+
+  const renderModule = device.createShaderModule({
+    code: vertexShaderCode + fragmentShaderCode,
+  });
+
+  const renderPipeline = device.createRenderPipeline({
+    layout: "auto",
+    vertex: {
+      module: renderModule,
+      entryPoint: "vsMain",
+    },
+    fragment: {
+      module: renderModule,
+      entryPoint: "fsMain",
+      targets: [{ format }],
+    },
+    primitive: {
+      topology: "triangle-list",
+    },
+  });
+
+  const sampler = device.createSampler({
+    magFilter: "linear",
+    minFilter: "linear",
+    addressModeU: "clamp-to-edge",
+    addressModeV: "clamp-to-edge",
+  });
+
+  const renderBindGroup = device.createBindGroup({
+    layout: renderPipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: outputTexture.createView() },
+      { binding: 1, resource: sampler },
+    ],
+  });
+
+  // Create uniform buffer from uniforms prop
+  const uniformKeys = Object.keys(uniforms).sort();
+  const uniformArray = uniformKeys.map((key) => uniforms[key]);
+  const uniformData = new Float32Array(
+    uniformArray.length > 0 ? uniformArray : [0]
+  );
+  const uniformBuffer = device.createBuffer({
+    size: uniformData.byteLength,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    mappedAtCreation: true,
+  });
+  new Float32Array(uniformBuffer.getMappedRange()).set(uniformData);
+  uniformBuffer.unmap();
+  // Note: Compute pipeline creation is deferred, allowing it to be swapped later
+  state.inputTexture = inputTexture;
+  state.outputTexture = outputTexture;
+  state.sampler = sampler;
+  state.renderPipeline = renderPipeline;
+  state.renderBindGroup = renderBindGroup;
+  state.uniformBuffer = uniformBuffer;
+}
+
+function updateComputePipeline(state, { computeShader, workgroupSize }) {
+  const device = state.device;
+  if (!device) return;
+
+  const computeModule = device.createShaderModule({
+    code: computeShader,
+  });
+
+  const computePipeline = device.createComputePipeline({
+    layout: "auto",
+    compute: {
+      module: computeModule,
+      entryPoint: "main",
+      workgroupSize: { x: workgroupSize[0], y: workgroupSize[1] },
+    },
+  });
+
+  const computeBindGroup = device.createBindGroup({
+    layout: computePipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: state.inputTexture.createView() },
+      { binding: 1, resource: state.outputTexture.createView() },
+      { binding: 2, resource: { buffer: state.uniformBuffer } },
+    ],
+  });
+
+  state.computePipeline = computePipeline;
+  state.computeBindGroup = computeBindGroup;
+}
+
+async function renderFrame(state, width, height) {
+  const {
+    video,
+    videoCanvas,
+    videoCtx,
+    device,
+    context,
+    inputTexture,
+    renderPipeline,
+    renderBindGroup,
+    computePipeline,
+    computeBindGroup,
+    dispatchScale = 1,
+    customDispatch = null,
+  } = state;
+
+  if (!video || video.readyState < 3 || video.paused) return;
+
+  // Draw video frame to canvas
+  videoCtx.drawImage(video, 0, 0, width, height);
+
+  try {
+    const imageBitmap = await createImageBitmap(videoCanvas);
+    device.queue.copyExternalImageToTexture(
+      { source: imageBitmap },
+      { texture: inputTexture },
+      [width, height]
+    );
+  } catch (error) {
+    const imageData = videoCtx.getImageData(0, 0, width, height);
+    device.queue.writeTexture(
+      { texture: inputTexture },
+      imageData.data,
+      { bytesPerRow: width * 4 },
+      { width, height, depthOrArrayLayers: 1 }
+    );
+  }
+
+  // Encode and submit commands
+  const commandEncoder = device.createCommandEncoder();
+
+  const computePass = commandEncoder.beginComputePass();
+  computePass.setPipeline(computePipeline);
+  computePass.setBindGroup(0, computeBindGroup);
+
+  // Use custom dispatch if provided, otherwise calculate based on dimensions and scale
+  const [wgX, wgY] =
+    customDispatch || [
+      Math.ceil(width / (computePipeline.workgroupSize.x * dispatchScale)),
+      Math.ceil(height / (computePipeline.workgroupSize.y * dispatchScale)),
+    ];
+
+  // let's add that: if debugging is enabled, log dispatch workgroup values
+  if (state.debug) {
+    console.log(`[DEBUG] Dispatching workgroups: (${wgX}, ${wgY})`);
+  }
+
+  computePass.dispatchWorkgroups(wgX, wgY);
+  computePass.end();
+
+  const view = context.getCurrentTexture().createView();
+  const renderPass = commandEncoder.beginRenderPass({
+    colorAttachments: [
+      {
+        view,
+        clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+        loadOp: "clear",
+        storeOp: "store",
+      },
+    ],
+  });
+  renderPass.setPipeline(renderPipeline);
+  renderPass.setBindGroup(0, renderBindGroup);
+  renderPass.draw(6, 1, 0, 0);
+  renderPass.end();
+
+  device.queue.submit([commandEncoder.finish()]);
+}
+
+export const WebGPUVideoView = ({
+  computeShader,
+  width = 640,
+  height = 480,
+  showSourceVideo = false,
+  workgroupSize,
+  dispatchScale = 1,
+  customDispatch = null,
+  uniforms = {},
+  debug = false // new debug prop added
+}) => {
+  const canvasId = React.useId();
+  workgroupSize = workgroupSize || [8, 8];
+  const frameRef = React.useRef(null);
+
+  // Group state for WebGPU and video, including the debug flag
+  const webgpuRef = React.useRef({
+    video: null,
+    videoCanvas: null,
+    videoCtx: null,
+    device: null,
+    context: null,
+    renderFormat: null,
+    inputTexture: null,
+    outputTexture: null,
+    sampler: null,
+    computePipeline: null,
+    computeBindGroup: null,
+    renderPipeline: null,
+    renderBindGroup: null,
+    uniformBuffer: null,
+    dispatchScale,
+    customDispatch,
+    debug, // store debug flag in state
+  });
+
+  // Setup video canvas
+  React.useEffect(() => {
+    const { videoCanvas, videoCtx, cleanup } = setupVideoCanvas(
+      width,
+      height,
+      showSourceVideo
+    );
+    webgpuRef.current.videoCanvas = videoCanvas;
+    webgpuRef.current.videoCtx = videoCtx;
+    return cleanup;
+  }, [width, height, showSourceVideo]);
+
+  // Initialize WebGPU resources and start rendering (excluding computeShader from dependencies)
+  React.useEffect(() => {
+    setupWebGPUResources(webgpuRef.current, {
+      width,
+      height,
+      computeShader,
+      canvasId,
+      uniforms,
+    })
+      .then(() => {
+        // After initial setup, create the compute pipeline from the provided shader.
+        updateComputePipeline(webgpuRef.current, { computeShader, uniforms, workgroupSize });
+        const animate = () => {
+          frameRef.current = requestAnimationFrame(animate);
+          renderFrame(webgpuRef.current, width, height);
+        };
+        animate();
+      })
+      .catch((error) => {
+        console.error("Setup failed:", error);
+      });
 
     return () => {
       if (frameRef.current) {
         cancelAnimationFrame(frameRef.current);
       }
-      if (videoProcessor.current) {
-        videoProcessor.current.cleanup();
+      const { video, inputTexture, outputTexture, uniformBuffer } = webgpuRef.current;
+      if (video?.srcObject) {
+        video.srcObject.getTracks().forEach((track) => track.stop());
       }
+      inputTexture?.destroy();
+      outputTexture?.destroy();
+      uniformBuffer?.destroy();
     };
-  }, [computeShader, width, height, showSourceVideo, workgroupSize]);
+  }, [width, height, canvasId]);
 
-  return html(['canvas', { id: canvasId, width, height }]);
+  // Update compute pipeline if computeShader changes without restarting everything
+  React.useEffect(() => {
+    if (webgpuRef.current.device) {
+      updateComputePipeline(webgpuRef.current, { computeShader, uniforms, workgroupSize });
+    }
+  }, [computeShader, ...workgroupSize]);
+
+  // Update uniforms on change
+  React.useEffect(() => {
+    const device = webgpuRef.current.device;
+    const uniformBuffer = webgpuRef.current.uniformBuffer;
+    if (!device || !uniformBuffer) return;
+    const uniformKeys = Object.keys(uniforms).sort();
+    const uniformArray = uniformKeys.map((key) => uniforms[key]);
+    const uniformData = new Float32Array(
+      uniformArray.length > 0 ? uniformArray : [0]
+    );
+    device.queue.writeBuffer(
+      uniformBuffer,
+      0,
+      uniformData.buffer,
+      uniformData.byteOffset,
+      uniformData.byteLength
+    );
+  }, [uniforms]);
+
+  return html(["canvas", { id: canvasId, width, height }]);
 };
-
-class WebGPUVideoCompute {
-  constructor(canvasId, videoWidth = 640, videoHeight = 480, showSourceVideo = false) {
-    this.canvasId = canvasId;
-    this.videoWidth = videoWidth;
-    this.videoHeight = videoHeight;
-    this.showSourceVideo = showSourceVideo;
-
-    this.video = null;
-    this.canvas = null;
-    this.device = null;
-    this.context = null;
-    this.inputTexture = null;
-    this.outputTexture = null;
-    this.computePipeline = null;
-    this.computeBindGroup = null;
-    this.renderPipeline = null;
-    this.renderBindGroup = null;
-    this.sampler = null;
-
-    this.workgroupSizeX = 8;
-    this.workgroupSizeY = 8;
-
-    // Offscreen canvas for capturing video frames.
-    this.videoCanvas = document.createElement('canvas');
-    this.videoCanvas.width = videoWidth;
-    this.videoCanvas.height = videoHeight;
-    this.videoCtx = this.videoCanvas.getContext('2d');
-
-    if (showSourceVideo) {
-      document.body.appendChild(this.videoCanvas);
-      this.videoCanvas.style.position = 'fixed';
-      this.videoCanvas.style.bottom = '10px';
-      this.videoCanvas.style.right = '10px';
-      this.videoCanvas.style.border = '1px solid red';
-      this.videoCanvas.style.width = '160px';
-      this.videoCanvas.style.height = '120px';
-      this.videoCanvas.style.zIndex = '1000';
-    }
-  }
-
-  async init() {
-    await this._setupWebcam();
-    await this._initWebGPU();
-    this._createTextures();
-    this._createRenderPipeline();
-  }
-
-  async _setupWebcam() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: this.videoWidth },
-          height: { ideal: this.videoHeight }
-        }
-      });
-
-      this.video = document.createElement('video');
-      this.video.srcObject = stream;
-      this.video.width = this.videoWidth;
-      this.video.height = this.videoHeight;
-      this.video.autoplay = true;
-      this.video.playsInline = true;
-      this.video.muted = true;
-
-      return new Promise((resolve) => {
-        this.video.onloadedmetadata = () => {
-          this.video.play().then(() => {
-            // Draw an initial frame.
-            this.videoCtx.drawImage(this.video, 0, 0, this.videoWidth, this.videoHeight);
-            resolve();
-          }).catch(err => {
-            console.error("Error playing video:", err);
-            resolve();
-          });
-        };
-      });
-    } catch (error) {
-      console.error("Webcam setup failed:", error);
-      throw error;
-    }
-  }
-
-  async _initWebGPU() {
-    if (!navigator.gpu) {
-      throw new Error('WebGPU not supported');
-    }
-
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) {
-      throw new Error('Failed to get GPU adapter');
-    }
-
-    this.device = await adapter.requestDevice();
-
-    this.canvas = document.getElementById(this.canvasId);
-    if (!this.canvas) {
-      throw new Error(`Canvas with ID ${this.canvasId} not found`);
-    }
-
-    this.context = this.canvas.getContext('webgpu');
-    if (!this.context) {
-      throw new Error('Failed to get WebGPU context');
-    }
-
-    const format = navigator.gpu.getPreferredCanvasFormat();
-    this.context.configure({
-      device: this.device,
-      format: format,
-      alphaMode: 'premultiplied',
-    });
-    this.renderFormat = format;
-  }
-
-  _createTextures() {
-    const usage = GPUTextureUsage;
-    const textureFormat = 'rgba8unorm';
-
-    // Input texture: used by the compute shader (for textureLoad).
-    this.inputTexture = this.device.createTexture({
-      size: [this.videoWidth, this.videoHeight],
-      format: textureFormat,
-      usage: usage.COPY_SRC | usage.COPY_DST | usage.TEXTURE_BINDING | usage.RENDER_ATTACHMENT,
-      label: 'Input Texture'
-    });
-
-    // Output texture: written to by the compute shader.
-    this.outputTexture = this.device.createTexture({
-      size: [this.videoWidth, this.videoHeight],
-      format: textureFormat,
-      usage: usage.STORAGE_BINDING | usage.TEXTURE_BINDING | usage.COPY_DST | usage.RENDER_ATTACHMENT,
-      label: 'Output Texture'
-    });
-  }
-
-  _createRenderPipeline() {
-    const vertexShaderCode = /* wgsl */`
-      struct VertexOutput {
-        @builtin(position) position: vec4<f32>,
-        @location(0) texCoord: vec2<f32>,
-      };
-
-      @vertex
-      fn vsMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-        var output: VertexOutput;
-        var positions = array<vec2<f32>, 6>(
-          vec2<f32>(-1.0, -1.0),
-          vec2<f32>(1.0, -1.0),
-          vec2<f32>(-1.0, 1.0),
-          vec2<f32>(-1.0, 1.0),
-          vec2<f32>(1.0, -1.0),
-          vec2<f32>(1.0, 1.0)
-        );
-        var texCoords = array<vec2<f32>, 6>(
-          vec2<f32>(0.0, 1.0),
-          vec2<f32>(1.0, 1.0),
-          vec2<f32>(0.0, 0.0),
-          vec2<f32>(0.0, 0.0),
-          vec2<f32>(1.0, 1.0),
-          vec2<f32>(1.0, 0.0)
-        );
-        output.position = vec4<f32>(positions[vertexIndex], 0.0, 1.0);
-        output.texCoord = texCoords[vertexIndex];
-        return output;
-      }
-    `;
-
-    const fragmentShaderCode = /* wgsl */`
-      @group(0) @binding(0) var myTex: texture_2d<f32>;
-      @group(0) @binding(1) var mySampler: sampler;
-
-      @fragment
-      fn fsMain(@location(0) texCoord: vec2<f32>) -> @location(0) vec4<f32> {
-        return textureSample(myTex, mySampler, texCoord);
-      }
-    `;
-
-    try {
-      const renderModule = this.device.createShaderModule({
-        code: vertexShaderCode + fragmentShaderCode
-      });
-
-      this.renderPipeline = this.device.createRenderPipeline({
-        layout: 'auto',
-        vertex: {
-          module: renderModule,
-          entryPoint: 'vsMain',
-        },
-        fragment: {
-          module: renderModule,
-          entryPoint: 'fsMain',
-          targets: [{ format: this.renderFormat }],
-        },
-        primitive: {
-          topology: 'triangle-list',
-        },
-      });
-
-      this.sampler = this.device.createSampler({
-        magFilter: 'linear',
-        minFilter: 'linear',
-        addressModeU: 'clamp-to-edge',
-        addressModeV: 'clamp-to-edge',
-      });
-
-      // Create the render bind group that will be reused
-      const outputTextureView = this.outputTexture.createView();
-      this.renderBindGroup = this.device.createBindGroup({
-        layout: this.renderPipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: outputTextureView },
-          { binding: 1, resource: this.sampler },
-        ],
-      });
-
-    } catch (error) {
-      console.error("Error creating render pipeline:", error);
-      throw error;
-    }
-  }
-
-  setComputeShader(wgslCode) {
-    try {
-      if (!wgslCode || typeof wgslCode !== 'string') {
-        throw new Error('Invalid shader code provided');
-      }
-
-      const module = this.device.createShaderModule({
-        code: wgslCode,
-        label: 'Compute Shader Module'
-      });
-
-      module.getCompilationInfo().then(info => {
-        if (info.messages.length > 0) {
-          console.warn("Shader compilation messages:", info.messages);
-        }
-      });
-
-      this.computePipeline = this.device.createComputePipeline({
-        layout: 'auto',
-        compute: {
-          module,
-          entryPoint: 'main',
-        },
-        label: 'Compute Pipeline'
-      });
-
-      this.computeBindGroup = this.device.createBindGroup({
-        layout: this.computePipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: this.inputTexture.createView() },
-          { binding: 1, resource: this.outputTexture.createView() },
-        ],
-        label: 'Compute Bind Group'
-      });
-    } catch (error) {
-      console.error("Error setting compute shader:", error);
-    }
-  }
-
-  setWorkgroupSize(x, y) {
-    this.workgroupSizeX = x;
-    this.workgroupSizeY = y;
-  }
-
-  renderFrame = async () => {
-    try {
-      if (!this.video || this.video.readyState < 3 || this.video.paused) {
-        console.log("Video not ready:",
-                    this.video ? this.video.readyState : "no video",
-                    "Paused:", this.video ? this.video.paused : "no video");
-        return;
-      }
-
-      // Draw the current video frame onto the offscreen canvas.
-      this.videoCtx.drawImage(this.video, 0, 0, this.videoWidth, this.videoHeight);
-
-      try {
-        // Create ImageBitmap from the canvas
-        const imageBitmap = await createImageBitmap(this.videoCanvas);
-
-        // Copy the ImageBitmap directly to the input texture
-        this.device.queue.copyExternalImageToTexture(
-          { source: imageBitmap },
-          { texture: this.inputTexture },
-          [this.videoWidth, this.videoHeight]
-        );
-
-      } catch (bitmapError) {
-        console.error("Error handling bitmap:", bitmapError);
-        // Fallback to the old method if bitmap fails
-        const imageData = this.videoCtx.getImageData(0, 0, this.videoWidth, this.videoHeight);
-        this.device.queue.writeTexture(
-          { texture: this.inputTexture },
-          imageData.data,
-          { bytesPerRow: this.videoWidth * 4 },
-          { width: this.videoWidth, height: this.videoHeight, depthOrArrayLayers: 1 }
-        );
-      }
-
-      const commandEncoder = this.device.createCommandEncoder();
-
-      // Run the compute shader pass.
-      const computePass = commandEncoder.beginComputePass();
-      computePass.setPipeline(this.computePipeline);
-      computePass.setBindGroup(0, this.computeBindGroup);
-      const wgX = Math.ceil(this.videoWidth / this.workgroupSizeX);
-      const wgY = Math.ceil(this.videoHeight / this.workgroupSizeY);
-      computePass.dispatchWorkgroups(wgX, wgY);
-      computePass.end();
-
-      const view = this.context.getCurrentTexture().createView();
-      const renderPass = commandEncoder.beginRenderPass({
-        colorAttachments: [{
-          view,
-          clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-          loadOp: 'clear',
-          storeOp: 'store',
-        }],
-      });
-      renderPass.setPipeline(this.renderPipeline);
-      renderPass.setBindGroup(0, this.renderBindGroup);
-      renderPass.draw(6, 1, 0, 0);
-      renderPass.end();
-
-      this.device.queue.submit([commandEncoder.finish()]);
-    } catch (error) {
-      console.error("Error in renderFrame:", error);
-      console.error("Error stack:", error.stack);
-    }
-  }
-
-  cleanup() {
-    if (this.video && this.video.srcObject) {
-      const tracks = this.video.srcObject.getTracks();
-      tracks.forEach(track => track.stop());
-    }
-    if (this.inputTexture) this.inputTexture.destroy();
-    if (this.outputTexture) this.outputTexture.destroy();
-  }
-}
