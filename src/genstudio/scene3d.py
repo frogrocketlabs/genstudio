@@ -1,4 +1,4 @@
-from genstudio.layout import JSExpr
+from genstudio.layout import JSExpr, is_js_expr
 import genstudio.plot as Plot
 from typing import Any, Dict, Union, Optional, TypedDict
 
@@ -144,7 +144,7 @@ class Scene(Plot.LayoutItem):
         components = []
         scene_props = {}
         for item in components_and_props:
-            if isinstance(item, SceneComponent):
+            if isinstance(item, SceneComponent) or is_js_expr(item):
                 components.append(item)
             elif isinstance(item, dict):
                 scene_props.update(item)

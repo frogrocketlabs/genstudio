@@ -301,6 +301,18 @@ JSExpr = Union[JSCall, JSRef, JSCode]
 """A type alias representing JavaScript expressions that can be evaluated in the runtime."""
 
 
+def is_js_expr(obj: Any) -> bool:
+    """Check if an object is a JavaScript expression (JSCall, JSRef, or JSCode).
+
+    Args:
+        obj: Object to check
+
+    Returns:
+        bool: True if object is a JSExpr type, False otherwise
+    """
+    return isinstance(obj, (JSCall, JSRef, JSCode))
+
+
 def js(txt: str, *params: Any, expression=True) -> JSCode:
     """Represents raw JavaScript code to be evaluated as a LayoutItem.
 
