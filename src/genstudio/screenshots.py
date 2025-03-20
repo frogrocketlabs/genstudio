@@ -301,11 +301,28 @@ class StudioContext(ChromeContext):
         start_time = time.time()
         filename.parent.mkdir(exist_ok=True, parents=True)
 
-        # Set up ffmpeg command
-        ffmpeg_cmd = (
-            f"ffmpeg {'-v error' if not self.debug else ''} -y -f image2pipe -vcodec png -r {fps} -i - "
-            f"-an -c:v libx264 -pix_fmt yuv420p {str(filename)}"
-        )
+        # Detect file extension
+        ext = filename.suffix.lower()
+
+        if ext == ".gif":
+            ffmpeg_cmd = (
+                f"ffmpeg {'-v error' if not self.debug else ''} -y "
+                f"-f image2pipe -vcodec png -framerate {fps} -i - "
+                # The filter below: (1) splits the pipeline into two streams;
+                #                   (2) generates a palette from one stream;
+                #                   (3) applies that palette to the other stream;
+                #                   (4) loops infinitely (0) in the final GIF.
+                f"-vf \"split [a][b];[b]palettegen=stats_mode=diff[p];[a][p]paletteuse=new=1\" "
+                f"-c:v gif -loop 0 \"{filename}\""
+            )
+        else:
+            # Fallback: generate MP4 video with libx264
+            ffmpeg_cmd = (
+                f"ffmpeg {'-v error' if not self.debug else ''} -y "
+                f"-f image2pipe -vcodec png -r {fps} -i - "
+                f"-an -c:v libx264 -pix_fmt yuv420p \"{filename}\""
+            )
+
         if self.debug:
             print(f"[StudioContext] Running ffmpeg command: {ffmpeg_cmd}")
 

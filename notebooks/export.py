@@ -156,6 +156,13 @@ if shutil.which("ffmpeg"):
         width=800,
         height=600,
     )
+    video_path = animated_scene.save_video(
+        state_updates=[{"t": i * 0.1} for i in range(60)],
+        filename=str(output_dir / "points.gif"),  # Convert Path to str
+        fps=30,
+        width=800,
+        height=600,
+    )
     print(f"Video saved to: {video_path}")
 else:
     print("Note: Video creation requires ffmpeg to be installed")
