@@ -1,3 +1,8 @@
+### [2025.3.11] - Mar 20, 2025
+
+- save_video as gif
+- notebooks: wgpu compute shader example
+
 ### [2025.3.10] - Mar 17, 2025
 
 - scene3d: improved rendering of ellipsoid wireframes
