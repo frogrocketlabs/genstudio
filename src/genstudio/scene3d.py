@@ -1,3 +1,4 @@
+from genstudio.layout import JSExpr
 import genstudio.plot as Plot
 from typing import Any, Dict, Union, Optional, TypedDict
 
@@ -131,7 +132,7 @@ class Scene(Plot.LayoutItem):
 
     def __init__(
         self,
-        *components_and_props: Union[SceneComponent, Dict[str, Any]],
+        *components_and_props: Union[SceneComponent, Dict[str, Any], JSExpr],
     ):
         """Initialize the scene.
 
