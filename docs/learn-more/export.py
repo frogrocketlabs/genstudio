@@ -39,9 +39,17 @@
 # Save state transitions as a video (requires ffmpeg):
 #
 # ```python
+# # Save as MP4 video
 # plot.save_video(
 #     state_updates=[{"counter": i} for i in range(30)],
 #     filename="animation.mp4",
+#     fps=24
+# )
+#
+# # Or save as animated GIF
+# plot.save_video(
+#     state_updates=[{"counter": i} for i in range(30)],
+#     filename="animation.gif",
 #     fps=24
 # )
 # ```

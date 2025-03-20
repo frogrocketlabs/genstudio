@@ -182,7 +182,7 @@ class LayoutItem:
 
         Args:
             state_updates: List of state updates to apply sequentially
-            filename: Path where the resulting video will be saved
+            filename: Path where the resulting video will be saved. Use .gif extension to save as GIF, otherwise saves as MP4
             fps: Frame rate (frames per second) for the video (default: 24)
             width: Width of the video in pixels (default: 500)
             height: Optional height of the video in pixels
@@ -190,7 +190,7 @@ class LayoutItem:
             debug: Whether to print debug information
 
         Returns:
-            Path to the saved video file
+            Path to the saved video file (.mp4 or .gif)
         """
         return screenshots.save_video(
             self,
