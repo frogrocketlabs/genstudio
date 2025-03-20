@@ -1,4 +1,4 @@
-from genstudio.layout import JSExpr, is_js_expr
+from genstudio.layout import JSExpr
 import genstudio.plot as Plot
 from typing import Any, Dict, Union, Optional, TypedDict
 
@@ -110,6 +110,16 @@ class SceneComponent(Plot.LayoutItem):
         )  # Create and return a new instance
 
 
+def flatten_layers(layers):
+    flattened = []
+    for layer in layers:
+        if isinstance(layer, Scene):
+            flattened.extend(flatten_layers(layer.layers))
+        else:
+            flattened.append(layer)
+    return flattened
+
+
 class Scene(Plot.LayoutItem):
     """A 3D scene visualization component using WebGPU.
 
@@ -132,56 +142,36 @@ class Scene(Plot.LayoutItem):
 
     def __init__(
         self,
-        *components_and_props: Union[SceneComponent, Dict[str, Any], JSExpr],
+        *layers: Union[SceneComponent, Dict[str, Any], JSExpr],
     ):
         """Initialize the scene.
 
         Args:
-            *components_and_props: Scene components and optional properties.
+            *layers: Scene components and optional properties.
                 Properties can include:
                 - controls: List of controls to show. Currently supports ['fps']
         """
-        components = []
-        scene_props = {}
-        for item in components_and_props:
-            if isinstance(item, SceneComponent) or is_js_expr(item):
-                components.append(item)
-            elif isinstance(item, dict):
-                scene_props.update(item)
-            else:
-                raise TypeError(f"Invalid type in components_and_props: {type(item)}")
 
-        self.components = components
-        self.scene_props = scene_props
+        self.layers = flatten_layers(layers)
         super().__init__()
 
     def __add__(self, other: Union[SceneComponent, "Scene", Dict[str, Any]]) -> "Scene":
         """Allow combining scenes with + operator."""
         if isinstance(other, Scene):
-            return Scene(
-                *self.components, *other.components, self.scene_props, other.scene_props
-            )
-        elif isinstance(other, SceneComponent):
-            return Scene(*self.components, other, self.scene_props)
-        elif isinstance(other, dict):
-            return Scene(*self.components, {**self.scene_props, **other})
+            return Scene(*self.layers, *other.layers)
         else:
-            raise TypeError(f"Cannot add Scene with {type(other)}")
+            return Scene(*self.layers, other)
 
-    def __radd__(self, other: Dict[str, Any]) -> "Scene":
-        """Allow combining scenes with + operator when dict is on the left."""
-        return Scene(*self.components, {**other, **self.scene_props})
+    def __radd__(self, other: Union[Dict[str, Any], JSExpr]) -> "Scene":
+        """Allow combining scenes with + operator when dict or JSExpr is on the left."""
+        return Scene(other, *self.layers)
 
     def for_json(self) -> Any:
         """Convert to JSON representation for JavaScript."""
         components = [
-            e.to_js_call() if isinstance(e, SceneComponent) else e
-            for e in self.components
+            e.to_js_call() if isinstance(e, SceneComponent) else e for e in self.layers
         ]
-
-        props = {"components": components, **self.scene_props}
-
-        return [Plot.JSRef("scene3d.Scene"), props]
+        return [Plot.JSRef("scene3d.SceneWithLayers"), {"layers": components}]
 
 
 def flatten_array(arr: Any, dtype: Any = np.float32) -> Any:

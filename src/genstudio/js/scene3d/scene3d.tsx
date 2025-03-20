@@ -239,6 +239,25 @@ function DevMenu({ showFps, onToggleFps, onCopyCamera, position, onClose }: DevM
  * />
  * ```
  */
+export function SceneWithLayers({ layers }: { layers: any[] }) {
+    const components: any[] = [];
+    const props: any = {};
+
+    for (const layer of layers) {
+        if (!layer) continue;
+
+        if (Array.isArray(layer) && layer[0] === SceneWithLayers) {
+            components.push(...layer[1].layers);
+        } else if (layer.type) {
+            components.push(layer);
+        } else if (layer.constructor === Object) {
+            Object.assign(props, layer);
+        }
+    }
+
+    return <Scene components={components} {...props} />;
+}
+
 export function Scene({
     components,
     width,
