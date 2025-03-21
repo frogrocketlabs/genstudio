@@ -1,3 +1,7 @@
+### [2025.3.12] - Mar 21, 2025
+
+- Scene3D: support dynamic layers (js expressions)
+
 ### [2025.3.11] - Mar 20, 2025
 
 - save_video as gif
